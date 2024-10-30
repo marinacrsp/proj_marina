@@ -6,8 +6,8 @@
 #SBATCH  --mem=50G
 
 
-source path_to_conda/conda.sh # TODO: SET.
-conda activate mri-reconstruction
+source /scratch_net/ken/mcrespo/conda/etc/profile.d/conda.sh # TODO: SET.
+conda activate pytcu11
 
 
 # NOTE: Uncomment when running multi-gpu script.
