@@ -9,7 +9,7 @@ wandb:
 # model_checkpoint: ./logs/3_10/10-03_16h38m/epoch_1999.pt  # TODO: SET (OR LEAVE COMMENTED).
 
 dataset:
-  path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/file_brain_AXT1_201_6002761.h5 # TODO: SET.
+  path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/file_brain_AXFLAIR_200_6002435.h5 # TODO: SET.
   n_slices: 3 
   with_mask: True
   acceleration: 3
@@ -20,7 +20,7 @@ dataset:
   # epsilon: 1.e-10 #NOTE this parameter is used for appliying the logarithmic transformation
 
 dataset_full:
-  path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/file_brain_AXT1_201_6002761.h5 # TODO: SET.
+  path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/file_brain_AXFLAIR_200_6002435.h5 # TODO: SET.
   n_slices: 3 
   with_mask: False
   acceleration: 3
@@ -39,7 +39,7 @@ model:
   params:
     # coord_dim: 4
     hidden_dim: 512
-    embedding_dim: 3
+    levels: 10
     # L: 15
     n_layers: 4
 

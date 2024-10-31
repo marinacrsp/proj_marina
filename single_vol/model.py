@@ -1,5 +1,5 @@
 import math
-
+from hash_encoding_batch import *
 import numpy as np
 import torch
 from torch import nn
@@ -45,30 +45,31 @@ class MLP(nn.Module):
         return self.output_layer(x)
 
 
-class coor_embedding(nn.Module):
-    def __init__(
-        self,
-        num_x_coords = 320,
-        num_y_coords = 320,
-        embedding_dim = 3
-    )->None:
-        super().__init__()        
-        self.x_embedding = nn.Embedding(num_x_coords, embedding_dim, padding_idx=0)
-        self.y_embedding = nn.Embedding(num_y_coords, embedding_dim, padding_idx=0)
+# class coor_embedding(nn.Module):
+#     def __init__(
+#         self,
+#     )->None:
+#         super().__init__()      
         
-    def forward(self, coors_kspace):
-        kx_embedded = self.x_embedding(coors_kspace[:,0].long()) 
-        ky_embedded = self.y_embedding(coors_kspace[:,1].long()) 
-        coord_features = torch.cat((torch.cat((kx_embedded, ky_embedded), dim=1), coors_kspace[:,2:]), dim = 1 )
+#         self.embedd_fn = hash_encoder(levels=10, log2_hashmap_size=12, n_features_per_level=2, n_max=320, n_min=16)
+        
+#         # self.x_embedding = nn.Embedding(num_x_coords, embedding_dim, padding_idx=0)
+#         # self.y_embedding = nn.Embedding(num_y_coords, embedding_dim, padding_idx=0)
+        
+#     def forward(self, coors_kspace):
+#         # kx_embedded = self.x_embedding(coors_kspace[:,0].long()) 
+#         # ky_embedded = self.y_embedding(coors_kspace[:,1].long()) 
+#         # coord_features = torch.cat((torch.cat((kx_embedded, ky_embedded), dim=1), coors_kspace[:,2:]), dim = 1 )
+#         coord_features = self.embedd_fn(coors_kspace)
 
-        return coord_features, self.x_embedding.weight, self.y_embedding.weight
+#         return coord_features
     
 
 class Siren_skip_emb(nn.Module):
     def __init__(
         self,
         hidden_dim=512,
-        embedding_dim = 3,
+        levels = 10,
         n_layers=4,
         out_dim=2,
         omega_0=30,
@@ -80,8 +81,8 @@ class Siren_skip_emb(nn.Module):
                 
         # Layer containing trainable parameters for the embedding
     
-        self.embed_fn = coor_embedding(embedding_dim=embedding_dim)
-        coor_embedd_dim = embedding_dim*2 + 2
+        self.embed_fn = hash_encoder(levels=levels, log2_hashmap_size=12, n_features_per_level=2, n_max=320, n_min=16)
+        coor_embedd_dim = levels*2 + 2
                 
         # First set of layers (before the first skip connection)
         self.firstlayers = nn.ModuleList([SineLayer(coor_embedd_dim, hidden_dim, is_first=True, omega_0=omega_0)])
@@ -92,21 +93,13 @@ class Siren_skip_emb(nn.Module):
         self.secondlayers = nn.ModuleList([SineLayer(coor_embedd_dim + hidden_dim, hidden_dim, is_first=False, omega_0=omega_0)])
         for _ in range(self.n_slayer-1):
             self.secondlayers.append(SineLayer(hidden_dim, hidden_dim, is_first=False, omega_0=omega_0))
-        
-        # self.output_layer = nn.Linear(hidden_dim, out_dim)
-        
-        # Don't keep track of gradients here, just initialization of weights 
-        # with torch.no_grad():
-        #     self.output_layer.weight.uniform_(
-        #         -np.sqrt(6 / hidden_dim) / omega_0, np.sqrt(6 / hidden_dim) / omega_0
-        #     )
-            
+
         self.output_layer = SineLayer(hidden_dim, out_dim, is_first=False, omega_0=omega_0)
         
     def forward(self, coords):
         
         # Coordinate encoding (Fourier)
-        h0, weightX, weightY = self.embed_fn(coords)
+        h0 = self.embed_fn(coords)
         
         # First set of layers
         h1 = h0.clone()
