@@ -34,11 +34,13 @@ class hash_encoder(nn.Module):
         if box_indices.shape[1] > 2:
             weights = torch.norm(box_indices - x[:, None, :], dim=2)
             den = weights.sum(dim=1, keepdim=True)
-            weights /= den
+            
+            weights /= den # Normalize weights
+            weights = 1-weights # NOTE: More weight is given to vertex closer to the point of interest
             
             weights = weights.to(device)
             box_embedds = box_embedds.to(device)
-            
+
             Npoints = len(den)
             xi_embedding = torch.zeros((Npoints, 2), device = device)
             
@@ -53,8 +55,12 @@ class hash_encoder(nn.Module):
     def _get_box_idx(self, points: torch.Tensor, n_l: int) -> tuple:
         
         # Get bounding box indices for a batch of points
-        x = points[:,0]
-        y = points[:,1]
+        if points.dim() > 1:
+            x = points[:,0]
+            y = points[:,1]
+        else:
+            x = points[0]
+            y = points[1]
 
         if self.n_max == n_l:
             box_idx = points
@@ -79,8 +85,8 @@ class hash_encoder(nn.Module):
             
             # Determine if the coordinates can be directly mapped or need hashing
             max_hashtable_size = 2 ** self.log2_hashmap_size
-            if max_hashtable_size > (n_l + 4) ** 2:
-                hashed_box_idx, scaled_coords = self._to_1D(box_idx, n_l)
+            if max_hashtable_size >= (n_l + 4) ** 2:
+                hashed_box_idx, _ = self._to_1D(box_idx, n_l)
             else:
                 hashed_box_idx = self._hash(box_idx)
                 

@@ -63,7 +63,7 @@ class Trainer:
         self.hparam_info = config["hparam_info"]
         self.hparam_info["n_layer"] = config["model"]["params"]["n_layers"]
         self.hparam_info["hidden_dim"] = config["model"]["params"]["hidden_dim"]
-        self.hparam_info["resolution_levels"] = config["model"]["params"]["levels"]
+        # self.hparam_info["resolution_levels"] = config["model"]["params"]["levels"]
         self.hparam_info["batch_size"] = config["dataloader"]["batch_size"]
         
         self.hparam_info["pisco_weightfactor"] = config["l_pisco"]["factor"]
@@ -353,6 +353,7 @@ class Trainer:
             # Plot image.
             fig = plt.figure(figsize=(8, 8))
             plt.imshow(volume_img[slice_id])
+            plt.axis('off')
             self.writer.add_figure(
                 f"prediction/slice_{slice_id}/volume_img", fig, global_step=epoch_idx
             )
@@ -383,6 +384,7 @@ class Trainer:
         fig = plt.figure(figsize=(20, 20))
         plt.subplot(2, 2, 1)
         plt.imshow(data_1 / cste_1)
+        plt.axis('off')
         plt.colorbar()
         plt.title(f"{title_1} kspace")
 
@@ -433,6 +435,7 @@ class Trainer:
 
         plt.subplot(2, 2, 3)
         plt.imshow(data_2 / cste_2)
+        plt.axis('off')
         plt.colorbar()
         plt.title(f"{title_2} kspace")
 

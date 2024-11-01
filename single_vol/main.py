@@ -16,10 +16,9 @@ from torch.utils.data import DataLoader
 
 
 MODEL_CLASSES = {
-    "Siren": Siren,
-    "MLP": MLP,
     "Siren2.0": Siren_skip,
     "Siren3.0": Siren_skip_emb,
+    "Siren4.0": Siren_skip_hash
 }
 
 LOSS_CLASSES = {
@@ -41,7 +40,6 @@ def main():
     args = parse_args()
     config = load_config(args.config)
     config["device"] = args.device
-    device = torch.device(config["device"])
     rs_numpy, rs_torch = handle_reproducibility(config["seed"])
 
     torch.set_default_dtype(torch.float32)
@@ -71,7 +69,7 @@ def main():
     )
 
     model_params = config["model"]["params"]
-    model = MODEL_CLASSES[config["model"]["id"]](device=device,**model_params)
+    model = MODEL_CLASSES[config["model"]["id"]](**model_params)
     
     if "model_checkpoint" in config.keys():
         model_state_dict = torch.load(config["model_checkpoint"])["model_state_dict"]
