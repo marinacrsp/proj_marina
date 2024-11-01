@@ -26,7 +26,7 @@ class Trainer:
         self.dataloader_consistency = dataloader_consistency
         self.dataloader_pisco = dataloader_pisco
         self.model = model.to(self.device)
-
+        
         # If stateful loss function, move its "parameters" to `device`.
         if hasattr(loss_fn, "to"):
             self.loss_fn = loss_fn.to(self.device)
@@ -63,9 +63,9 @@ class Trainer:
         self.hparam_info = config["hparam_info"]
         self.hparam_info["n_layer"] = config["model"]["params"]["n_layers"]
         self.hparam_info["hidden_dim"] = config["model"]["params"]["hidden_dim"]
-        # self.hparam_info["L_encoding"] = config["model"]["params"]["L"]
-        self.hparam_info["embedding_dim"] = config["model"]["params"]["embedding_dim"]
+        self.hparam_info["resolution_levels"] = config["model"]["params"]["levels"]
         self.hparam_info["batch_size"] = config["dataloader"]["batch_size"]
+        
         self.hparam_info["pisco_weightfactor"] = config["l_pisco"]["factor"]
         
         print(self.hparam_info)
@@ -126,11 +126,11 @@ class Trainer:
         # Also known as "empirical risk".
         avg_loss = 0.0
         n_obs = 0
-        
+
         self.model.train()
         for inputs, targets in self.dataloader_consistency:
             inputs, targets = inputs.to(self.device), targets.to(self.device)
-
+            
             self.optimizer.zero_grad(set_to_none=True)
             outputs = self.model(inputs)
             

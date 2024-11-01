@@ -9,7 +9,8 @@ wandb:
 # model_checkpoint: ./logs/3_10/10-03_16h38m/epoch_1999.pt  # TODO: SET (OR LEAVE COMMENTED).
 
 dataset:
-  path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/file_brain_AXFLAIR_200_6002435.h5 # TODO: SET.
+  # path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/file_brain_AXFLAIR_200_6002435.h5 # TODO: SET.
+  path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/file_brain_AXT1POST_203_6000861.h5
   n_slices: 3 
   with_mask: True
   acceleration: 3
@@ -20,7 +21,8 @@ dataset:
   # epsilon: 1.e-10 #NOTE this parameter is used for appliying the logarithmic transformation
 
 dataset_full:
-  path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/file_brain_AXFLAIR_200_6002435.h5 # TODO: SET.
+  # path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/file_brain_AXFLAIR_200_6002435.h5 # TODO: SET.
+  path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/file_brain_AXT1POST_203_6000861.h5
   n_slices: 3 
   with_mask: False
   acceleration: 3
@@ -63,12 +65,12 @@ scheduler:
     step_size: 4000
 
 # Training Process
-n_epochs: 1000
+n_epochs: 2000
 log_interval: 100
 
 l_pisco:
-  addpisco: True
-  # addpisco: False
+  # addpisco: True
+  addpisco: False
   E_epoch: 300
   minibatch_size: 1000 
   alpha: 1.e-4 # Regularizer for the W

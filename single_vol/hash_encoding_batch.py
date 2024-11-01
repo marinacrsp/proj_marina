@@ -20,6 +20,7 @@ class hash_encoder(nn.Module):
             nn.Embedding(self._get_number_of_embeddings(i), self.n_features_per_level)
             for i in range(self.l_max)
         ])
+
     
     def _get_number_of_embeddings(self, level_idx: int) -> int:
         max_size = 2 ** self.log2_hashmap_size
@@ -28,13 +29,18 @@ class hash_encoder(nn.Module):
         return min(max_size, n_l_embeddings)
 
     def bilinear_interp(self, x: torch.Tensor, box_indices: torch.Tensor, box_embedds: torch.Tensor) -> torch.Tensor:
+        device = x.device
+        
         if box_indices.shape[1] > 2:
             weights = torch.norm(box_indices - x[:, None, :], dim=2)
             den = weights.sum(dim=1, keepdim=True)
             weights /= den
             
+            weights = weights.to(device)
+            box_embedds = box_embedds.to(device)
+            
             Npoints = len(den)
-            xi_embedding = torch.zeros((Npoints, 2))
+            xi_embedding = torch.zeros((Npoints, 2), device = device)
             
             for i in range(4):
                 xi_embedding += weights[...,i].unsqueeze(1) * box_embedds[...,i,:]
@@ -45,6 +51,7 @@ class hash_encoder(nn.Module):
         return xi_embedding
     
     def _get_box_idx(self, points: torch.Tensor, n_l: int) -> tuple:
+        
         # Get bounding box indices for a batch of points
         x = points[:,0]
         y = points[:,1]
@@ -81,6 +88,7 @@ class hash_encoder(nn.Module):
     
     ## Hash encoders
     def _to_1D(self, coors, n_l):
+
         scale_factor = self.n_max // n_l
         scaled_coords = torch.div(coors, scale_factor, rounding_mode="floor").int()    
         x = scaled_coords[...,0]
@@ -94,6 +102,7 @@ class hash_encoder(nn.Module):
         coords: this function can process upto 7 dim coordinates
         log2T:  logarithm of T w.r.t 2
         """
+        device = coords.device
         primes = torch.tensor([
             1,
             2654435761,
@@ -102,10 +111,10 @@ class hash_encoder(nn.Module):
             2097192037,
             1434869437,
             2165219737,
-        ], dtype = torch.int64
+        ], dtype = torch.int64, device=device
         )
 
-        xor_result = torch.zeros(coords.shape[:-1], dtype=torch.int64)
+        xor_result = torch.zeros(coords.shape[:-1], dtype=torch.int64, device=device)
 
         for i in range(coords.shape[-1]): # Loop around all possible dimensions of the vector containing the bounding box positions
             xor_result ^= coords[...,i].to(torch.int64)*primes[i]
@@ -116,6 +125,8 @@ class hash_encoder(nn.Module):
     
     def forward(self, points: torch.Tensor) -> torch.Tensor:
         # Process a batch of points
+        self.device = points.device
+        
         xy_embedded_all = []
         xy = points[:,:2]
         

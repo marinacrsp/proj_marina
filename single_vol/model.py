@@ -74,14 +74,16 @@ class Siren_skip_emb(nn.Module):
         out_dim=2,
         omega_0=30,
         dropout_rate=0.20,
+        device=None,
     ) -> None:
         super().__init__()        
         self.n_flayer = n_layers // 2
         self.n_slayer = n_layers - self.n_flayer
                 
         # Layer containing trainable parameters for the embedding
-    
+        
         self.embed_fn = hash_encoder(levels=levels, log2_hashmap_size=12, n_features_per_level=2, n_max=320, n_min=16)
+        
         coor_embedd_dim = levels*2 + 2
                 
         # First set of layers (before the first skip connection)
