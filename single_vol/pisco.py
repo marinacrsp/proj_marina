@@ -47,20 +47,6 @@ def compute_Lsquares (X, Y, alpha):
     return W, elem1, elem2
 
 
-# def complex_distance(W1, W2):
-#     """
-#     Computes the L2 distance between two complex matrices W1 and W2.
-#     It compares both real and imaginary parts.
-#     """
-
-#     # Compute the squared differences for both real and imaginary parts
-#     real_diff = torch.norm(W1.real - W2.real)
-#     # print(real_diff)
-#     imag_diff = torch.norm(W1.imag - W2.imag)
-#     # Return the combined distance
-#     return real_diff + imag_diff
-
-
 def L_pisco (Ws):
     """Function to compute the Pisco loss
     Inputs:
@@ -103,6 +89,10 @@ def get_grappa_matrixes (inputs, shape):
 
     edges = leftmost_vedge | rightmost_vedge | upmost_vedge | downmost_vedge
     k_coors_nedge = k_coors[~edges]
+    
+    # This is in case there were no edges to begin with
+    if k_coors_nedge.shape[0] == 0:
+        k_coors_nedge = k_coors
 
     #### Reshape:
     # Reshape input matrixes for coilID to be considered dim : n_points x N_coils x 4
