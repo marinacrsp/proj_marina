@@ -47,7 +47,6 @@ def main():
     ##################################################
     # Initialization
     ##################################################
-    # Gewt
     dataset_undersampled = KCoordDataset(**config["dataset"])
     dataset_fullysampled = KCoordDataset(**config["dataset_full"])
     loader_config = config["dataloader"]

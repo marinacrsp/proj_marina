@@ -97,6 +97,7 @@ class Trainer:
                     # if (epoch_idx + 1) % 20 == 0:
                     
                     empirical_pisco, epoch_res1, epoch_res2 = self._train_with_Lpisco()
+                    # self.grappa_matrix = w_grappa
                     print(f"EPOCH {epoch_idx}  Pisco loss: {empirical_pisco}\n")
                     self.writer.add_scalar("Residuals/Linear", epoch_res1, epoch_idx)
                     self.writer.add_scalar("Residuals/Regularizer", epoch_res2, epoch_idx)
@@ -159,6 +160,7 @@ class Trainer:
         vol_id = 0
         shape = self.dataloader_pisco.dataset.metadata[vol_id]["shape"]
         _, n_coils, _, _ = shape
+        W_batch = []
         
         for inputs, _ in self.dataloader_pisco:
             # self.optimizer.zero_grad(set_to_none=True)
@@ -171,7 +173,6 @@ class Trainer:
             
             # Compute the pisco loss
             batch_Lp = L_pisco(Ws) * self.factor
-            
             assert batch_Lp.requires_grad, "batch_Lp does not require gradients."
             
             # Update the model based on the Lpisco loss
@@ -185,10 +186,18 @@ class Trainer:
             avg_res2 += batch_r2
             
             n_obs += len(inputs)
-        
+            
+            # ## Compute the grappa matrixes
+            # nogradWs = Ws.copy()
+            # # nograd_w = np.mean(nogradWs.detach().cpu().numpy())
+            # nograd_w = np.mean([w.detach().cpu().numpy() for w in nogradWs], axis=0)
+
+            # W_batch.append(nograd_w)
+            
         # From this set of points, the following residuals and losses are obtained
         avg_loss = avg_loss / n_obs
         avg_res1 = avg_res1/n_obs
+        # w_grappa = np.mean(W_batch, axis = 0)
         # avg_res2 = avg_res2/n_obs
         return avg_loss, avg_res1, avg_res2
 
@@ -201,13 +210,22 @@ class Trainer:
         t_predicted = torch.zeros((t_coordinates.shape[0], n_coils), dtype=torch.complex64)
         patch_predicted = torch.zeros((patch_coordinates.shape[0], n_coils), dtype=torch.complex64)
         t_coordinates, patch_coordinates = t_coordinates.to(self.device), patch_coordinates.to(self.device) 
-
-        for coil_id in range(n_coils):
-            t_predicted[:,coil_id] = torch.view_as_complex(self.model(t_coordinates[:,coil_id,:]))
-            patch_predicted[:,coil_id] = torch.view_as_complex(self.model(patch_coordinates[:,coil_id,:])).detach()
-            # Reshape back the patch to its original shape : Nm x Nn x Nc
-            
-        patch_predicted = patch_predicted.view(t_coordinates.shape[0], Nn, n_coils)
+        
+        # Flatten the T and P neighbourhood patch 
+        t_coordinates_flat = t_coordinates.view(t_coordinates.shape[0]*n_coils, t_coordinates.shape[-1])
+        patch_coordinates_flat = patch_coordinates.view(patch_coordinates.shape[0]*n_coils, patch_coordinates.shape[-1])
+        
+        # for coil_id in range(n_coils):
+        #     t_predicted[:,coil_id] = torch.view_as_complex(self.model(t_coordinates[:,coil_id,:]))
+        #     patch_predicted[:,coil_id] = torch.view_as_complex(self.model(patch_coordinates[:,coil_id,:])).detach()
+        
+        # Predict the values at the selected pisco samples for the T kspace and the P surrounding neighbour 
+        t_predicted = torch.view_as_complex(self.model(t_coordinates_flat))
+        patch_predicted = torch.view_as_complex(self.model(patch_coordinates_flat)).detach()
+        
+        # Reshape the matrixes back to their corresponding shapes
+        t_predicted = t_predicted.view(t_coordinates.shape[0], n_coils) # NOTE t_predicted : Nm x Nc
+        patch_predicted = patch_predicted.view(t_coordinates.shape[0], Nn, n_coils) # NOTE patch_predicted : Nm x Nn x Nc
         
         ##### Estimate the Ws for a random subset of values
         T_s, Ns = split_batch(t_predicted, self.minibatch)
@@ -217,15 +235,26 @@ class Trainer:
         Ws = []
         elem1 = 0
         elem2 = 0
-        for i, t_s in enumerate(T_s):
-            p_s = P_s[i]
-            p_s = torch.flatten(p_s, start_dim=1)
-            ws, res1, res2 = compute_Lsquares(p_s, t_s, self.alpha)
+        
+        if Ns > 1:
+            for i, t_s in enumerate(T_s):
+                p_s = P_s[i]
+                p_s = torch.flatten(p_s, start_dim=1)
+                ws, res1, res2 = compute_Lsquares(p_s, t_s, self.alpha)
+                Ws.append(ws)
+                
+                # Compute an average of the equation residuals
+                elem1 += res1
+                elem2 += res2
+                
+        else:
+            p_s = P_s.view(P_s.shape[0], P_s.shape[1]*n_coils)
+            ws, res1, res2 = compute_Lsquares(p_s, T_s, self.alpha)
             Ws.append(ws)
             
-            # Compute an average of the equation residuals
             elem1 += res1
             elem2 += res2
+
         return Ws, elem1/Ns, elem2/Ns
     
     @torch.no_grad()
@@ -254,16 +283,19 @@ class Trainer:
             device=self.device,
             dtype=torch.float32,
         )
+        # grappa_volume = torch.zeros((n_slices, n_coils, height, width), dtype = torch.complex64)
+        
         for point_ids in dataloader:
             point_ids = point_ids[0].to(self.device, dtype=torch.long)
             coords = torch.zeros_like(
                 point_ids, dtype=torch.float32, device=self.device
             )
-
+            
             coords[:, 0] = point_ids[:, 0]
             coords[:, 1] = point_ids[:, 1]
             coords[:, 2] = (2 * point_ids[:, 2]) / (n_slices - 1) - 1
             coords[:, 3] = (2 * point_ids[:, 3]) / (n_coils - 1) - 1
+
 
             outputs = self.model(coords)
             # "Fill in" the unsampled region.
@@ -271,6 +303,28 @@ class Trainer:
                 point_ids[:, 2], point_ids[:, 3], point_ids[:, 1], point_ids[:, 0]
             ] = outputs
 
+            # ## GRAPPA IMAGE RECONSTRUCTION based on predicted outputs # NOTE : What happens with positions unknown?
+            # ####################################################
+            # t_coordinates, neighbor_coordinates, Nn = get_grappa_matrixes(coords, shape)
+
+            # t_coors = torch.zeros((t_coordinates.shape), dtype=torch.int)
+            # t_coors[...,:2] = t_coordinates[...,:2]
+            # t_coors[...,2] = (denormalize(t_coordinates[...,2], n_slices))
+            # t_coors[...,3] = (denormalize(t_coordinates[...,3], n_coils))
+            
+            # nn_coors = torch.zeros((neighbor_coordinates.shape), dtype=torch.int)
+            # nn_coors[...,:2] = neighbor_coordinates[...,:2]
+            # nn_coors[...,2] = (denormalize(neighbor_coordinates[...,2], n_slices))
+            # nn_coors[...,3] = (denormalize(neighbor_coordinates[...,3], n_coils))
+            
+            # neighbor_kspacevals = torch.view_as_complex(volume_kspace[nn_coors[...,2], nn_coors[...,3], nn_coors[...,1], nn_coors[...,0]])
+            # neighbor_kspacevals = neighbor_kspacevals.reshape((t_coordinates.shape[0], Nn, n_coils)).detach().cpu()
+            
+            # ps_kspacevals = neighbor_kspacevals.view(t_coordinates.shape[0], Nn*n_coils)
+            # t_kspacevals = torch.matmul(ps_kspacevals, torch.tensor(self.grappa_matrix))
+            
+            # grappa_volume[t_coors[...,2], t_coors[...,3], t_coors[...,1], t_coors[...,0]] = t_kspacevals
+                    
         # Multiply by the normalization constant.
         volume_kspace = (
             volume_kspace * self.dataloader_consistency.dataset.metadata[vol_id]["norm_cste"]
@@ -280,8 +334,11 @@ class Trainer:
 
         # "Fill-in" center values.
         volume_kspace[..., left_idx:right_idx,:] = center_vals #NOTE Shape of volume kspace is [n_coils, n_slices, height, width, 2] it's not in complex form
-                
+        # grappa_volume[..., left_idx:right_idx] = torch.view_as_complex(center_vals)
+        
         volume_img = rss(inverse_fft2_shift(tensor_to_complex_np(volume_kspace)))
+        # grappa_img = inverse_fft2_shift(grappa_volume)
+        # mean_grappa_img = rss(inverse_fft2_shift(grappa_volume))
         
         self.model.train()
         return volume_img
@@ -358,7 +415,24 @@ class Trainer:
                 f"prediction/slice_{slice_id}/volume_img", fig, global_step=epoch_idx
             )
             plt.close(fig)
-            
+
+        # ##################################################
+        # # Log image coil sensitivities predicted
+        # ##################################################
+        # grappa_img = np.abs(grappa_img)
+        # mean_grappa = np.abs(mean_grappa)
+        
+        # # Show sensitivity maps from grappa matrixes calculated
+        # for coil_idx in range(shape[1]):
+        #     fig = plt.figure(figsize=(8,8))
+        #     plt.imshow(grappa_img[0,coil_idx]/mean_grappa[0])
+        #     plt.axis('off')
+        #     self.writer.add_figure(
+        #         f"sensitivity coil/coil_idx{coil_idx}/grappa_matrix", fig, global_step=epoch_idx 
+        #     )
+        
+        #     plt.close(fig)
+        
 
         # Log evaluation metrics.
         ssim_val = ssim(self.ground_truth, volume_img)

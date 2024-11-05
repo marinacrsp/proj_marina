@@ -9,7 +9,7 @@ wandb:
 # model_checkpoint: ./logs/3_10/10-03_16h38m/epoch_1999.pt  # TODO: SET (OR LEAVE COMMENTED).
 
 dataset:
-  # path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/file_brain_AXFLAIR_200_6002435.h5 # TODO: SET.
+  # path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/file_brain_AXT1POST_203_6000861.h5 # TODO: SET.
   path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/file_brain_AXT1POST_205_2050250.h5
   n_slices: 3 
   with_mask: True
@@ -21,18 +21,18 @@ dataset:
   # epsilon: 1.e-10 #NOTE this parameter is used for appliying the logarithmic transformation
 
 dataset_full:
-  # path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/file_brain_AXFLAIR_200_6002435.h5 # TODO: SET.
+  # path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/file_brain_AXT1POST_203_6000861.h5 # TODO: SET.
   path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/file_brain_AXT1POST_205_2050250.h5
-  with_mask: False
+  with_mask: True
   acceleration: 3
   center_frac: 0.15
   mask_type: Equispaced
   # center_train: True
   center_train: False
-  epsilon: 1.e-10 #NOTE this parameter is used for appliying the logarithmic transformation
+  # epsilon: 1.e-10 #NOTE this parameter is used for appliying the logarithmic transformation
 
 dataloader:
-  batch_size: 10_000
+  batch_size: 15_000
   pin_memory: False 
 
 # model:
@@ -73,10 +73,10 @@ n_epochs: 1000
 log_interval: 100
 
 l_pisco:
-  addpisco: True
-  # addpisco: False
-  E_epoch: 400
-  minibatch_size: 2_500 
+  # addpisco: True
+  addpisco: False
+  E_epoch: 3
+  minibatch_size: 100
   alpha: 1.e-4 # Regularizer for the W
   factor: 0.1 # How much the Lpisco loss gets weighted
 

@@ -14,29 +14,50 @@ def denormalize (n_data, norm_factor):
 
 def split_batch (data, size_minibatch):
     """Function that performs the random spliting of the dataloader batch into Ns subsets of generally the same size"""
+    last_idx = 0    
     total_batch = data.shape[0]
-    iter = total_batch//size_minibatch
-    sample_batch = []
-    last_idx = 0
-    
-    for i in range(iter):
-        if i == 0:
-            minibatch = data[:size_minibatch,...]
-        elif i==iter-1:
-            minibatch = data[last_idx+1:,...]
+
+    if total_batch <= size_minibatch:
+        sample_batch = data
+        iter = 1
+
+    else:
+        iter = total_batch/size_minibatch
+        last_idx = 0
+        if 1 < iter < 2:
+            iter = 2
         else:
-            minibatch = data[last_idx+1:last_idx+size_minibatch,...]
+            iter = int(np.round(iter))
         
-        sample_batch.append(minibatch)
-        last_idx += size_minibatch
+        sample_batch = []
+        for i in range(iter):
+            if i == 0: # NOTE first iteration
+                mini = data[:size_minibatch,...]
+                last_idx += size_minibatch
+                
+            elif i==iter-1: # NOTE last iteration
+                mini = data[last_idx + 1: , ...]
+                
+            else:
+                mini = data[last_idx + 1 : last_idx + size_minibatch, ...]
+                last_idx += size_minibatch
+                
+            sample_batch.append(mini)
+    
     return sample_batch, iter
 
 def compute_Lsquares (X, Y, alpha):
     """Solves the Least Squares giving matrix W"""
+    if X.device != Y.device:
+        raise ValueError("X and Y tensors must be on the same device.")
+    
+    device = X.device  # Get the device of the tensors
+
     P_TxP = torch.matmul(X.T, X)
     P_TxT = torch.matmul(X.T, Y)
-
-    reg = alpha * torch.eye(P_TxP.shape[0])
+    
+    reg = alpha * torch.eye(P_TxP.shape[0], device=device)
+    
     W = torch.linalg.solve(P_TxP + reg, P_TxT)
     
     PxW = torch.matmul(X, W)
@@ -56,6 +77,7 @@ def L_pisco (Ws):
     # Compare the Ws, obtain the Pisco loss
     total_loss = 0
     Ns = len(Ws)
+    
     for i in range(Ns):
         for j in range(i+1, Ns):
             diff = Ws[i].flatten() - Ws[j].flatten()
