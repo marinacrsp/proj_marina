@@ -152,7 +152,10 @@ class Trainer:
     
     
     def _train_with_Lpisco (self):
+        torch.cuda.empty_cache()
         self.model.train()
+        
+        
         n_obs = 0
         avg_loss = 0.0
         avg_res1 = 0.0
@@ -187,12 +190,6 @@ class Trainer:
             
             n_obs += len(inputs)
             
-            # ## Compute the grappa matrixes
-            # nogradWs = Ws.copy()
-            # # nograd_w = np.mean(nogradWs.detach().cpu().numpy())
-            # nograd_w = np.mean([w.detach().cpu().numpy() for w in nogradWs], axis=0)
-
-            # W_batch.append(nograd_w)
             
         # From this set of points, the following residuals and losses are obtained
         avg_loss = avg_loss / n_obs
@@ -206,24 +203,33 @@ class Trainer:
     ###########################################################################
     
     def predict_ws (self, t_coordinates, patch_coordinates, n_coils, Nn):
-        
-        t_predicted = torch.zeros((t_coordinates.shape[0], n_coils), dtype=torch.complex64)
-        patch_predicted = torch.zeros((patch_coordinates.shape[0], n_coils), dtype=torch.complex64)
         t_coordinates, patch_coordinates = t_coordinates.to(self.device), patch_coordinates.to(self.device) 
         
-        # Flatten the T and P neighbourhood patch 
-        t_coordinates_flat = t_coordinates.view(t_coordinates.shape[0]*n_coils, t_coordinates.shape[-1])
-        patch_coordinates_flat = patch_coordinates.view(patch_coordinates.shape[0]*n_coils, patch_coordinates.shape[-1])
+        coil_max = 4
+        coil_loops = n_coils//coil_max
+        lastcoils = 0
+        t_predicted_list = []
+        patch_predicted_list = []
+
+        for idx in range(coil_loops):
+            
+            thiscoils = coil_max*idx + coil_max
+            t_coordinates_flat = t_coordinates[:,lastcoils:thiscoils,...].reshape(t_coordinates.shape[0]*coil_max,t_coordinates.shape[2])
+            patch_coordinates_flat = patch_coordinates[:,lastcoils:thiscoils,...].reshape(patch_coordinates.shape[0]*coil_max,t_coordinates.shape[2])
+            
+            # Predict the kvalues every 4 coils
+            t_predicted_coil = torch.view_as_complex(self.model(t_coordinates_flat))
+            patch_predicted_coil = torch.view_as_complex(self.model(patch_coordinates_flat)).detach()
+            
+            t_predicted_list.append(t_predicted_coil)
+            patch_predicted_list.append(patch_predicted_coil)
+            
+            lastcoils = thiscoils
+    
+        t_predicted = torch.cat(t_predicted_list, dim=0)
+        patch_predicted = torch.cat(patch_predicted_list, dim=0)
         
-        # for coil_id in range(n_coils):
-        #     t_predicted[:,coil_id] = torch.view_as_complex(self.model(t_coordinates[:,coil_id,:]))
-        #     patch_predicted[:,coil_id] = torch.view_as_complex(self.model(patch_coordinates[:,coil_id,:])).detach()
-        
-        # Predict the values at the selected pisco samples for the T kspace and the P surrounding neighbour 
-        t_predicted = torch.view_as_complex(self.model(t_coordinates_flat))
-        patch_predicted = torch.view_as_complex(self.model(patch_coordinates_flat)).detach()
-        
-        # Reshape the matrixes back to their corresponding shapes
+        # # Reshape the matrixes back to their corresponding shapes
         t_predicted = t_predicted.view(t_coordinates.shape[0], n_coils) # NOTE t_predicted : Nm x Nc
         patch_predicted = patch_predicted.view(t_coordinates.shape[0], Nn, n_coils) # NOTE patch_predicted : Nm x Nn x Nc
         

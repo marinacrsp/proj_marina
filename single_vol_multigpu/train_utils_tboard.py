@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from pisco import *
 from helper_functions import *
 from torch.utils.tensorboard import SummaryWriter # To print to tensorboard
-
+import torch.distributed as dist
 
 class Trainer:
     def __init__(
@@ -91,36 +91,33 @@ class Trainer:
             
             if (epoch_idx + 1) >= self.E_epoch:
                 
-                if self.lossadded == True:
-                    
-                    ## Evaluate only pisco loss every 20 samples
-                    # if (epoch_idx + 1) % 20 == 0:
-                    
+                if self.lossadded == True:                    
                     empirical_pisco, epoch_res1, epoch_res2 = self._train_with_Lpisco()
                     # self.grappa_matrix = w_grappa
-                    print(f"EPOCH {epoch_idx}  Pisco loss: {empirical_pisco}\n")
-                    self.writer.add_scalar("Residuals/Linear", epoch_res1, epoch_idx)
-                    self.writer.add_scalar("Residuals/Regularizer", epoch_res2, epoch_idx)
-                        
-            print(f"EPOCH {epoch_idx}    avg loss: {empirical_risk}\n")
-            # Log the errors
-            self.writer.add_scalar("Loss/train", empirical_risk, epoch_idx)
-            self.writer.add_scalar("Loss/Pisco", empirical_pisco, epoch_idx)
+                    
+                    if dist.get_rank() == 0:
+                        print(f"EPOCH {epoch_idx}  Pisco loss: {empirical_pisco}\n")
+                        self.writer.add_scalar("Residuals/Linear", epoch_res1, epoch_idx)
+                        self.writer.add_scalar("Residuals/Regularizer", epoch_res2, epoch_idx)
             
-            # Log the average residuals
-            # TODO: UNCOMMENT WHEN USING LR SCHEDULER.
-            self.writer.add_scalar("Learning Rate", self.scheduler.get_last_lr()[0], epoch_idx)
+            if dist.get_rank() == 0:
+                print(f"EPOCH {epoch_idx}    avg loss: {empirical_risk}\n")
+                # Log the errors
+                self.writer.add_scalar("Loss/train", empirical_risk, epoch_idx)
+                self.writer.add_scalar("Loss/Pisco", empirical_pisco, epoch_idx)
+            
+                self.writer.add_scalar("Learning Rate", self.scheduler.get_last_lr()[0], epoch_idx)
 
-            if (epoch_idx + 1) % self.log_interval == 0:
-                self._log_performance(epoch_idx)
-                self._log_weight_info(epoch_idx)
+                if (epoch_idx + 1) % self.log_interval == 0:
+                    self._log_performance(epoch_idx)
+                    self._log_weight_info(epoch_idx)
 
-            if (epoch_idx + 1) % self.checkpoint_interval == 0:
-                # Takes ~3 seconds.
-                self._save_checkpoint(epoch_idx)
+                if (epoch_idx + 1) % self.checkpoint_interval == 0:
+                    # Takes ~3 seconds.
+                    self._save_checkpoint(epoch_idx)
 
-        self._log_information(empirical_risk)
-        self.writer.close()
+                self._log_information(empirical_risk)
+                self.writer.close()
         
         
     def _train_one_epoch(self, epoch_idx):
@@ -147,6 +144,7 @@ class Trainer:
             
             avg_loss += batch_loss.item() * len(inputs)
             n_obs += len(inputs)        
+            
         avg_loss = avg_loss / n_obs
         return avg_loss
     
@@ -198,7 +196,8 @@ class Trainer:
         avg_loss = avg_loss / n_obs
         avg_res1 = avg_res1/n_obs
         # w_grappa = np.mean(W_batch, axis = 0)
-        # avg_res2 = avg_res2/n_obs
+        avg_res2 = avg_res2/n_obs
+        
         return avg_loss, avg_res1, avg_res2
 
     ###########################################################################

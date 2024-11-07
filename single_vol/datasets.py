@@ -92,7 +92,9 @@ class KCoordDataset(Dataset):
                 kx_new = kx_ids.clone()
             else:
                 kx_ids = torch.arange(width)
+                # kx_new = kx_ids
                 
+                ## NOTE: This is for Pisco
                 # We want to have fully sampled volume but without the center (left_idx:right_idx)
                 center_idx = kx_ids[left_idx:right_idx]
                 mask_kx = torch.ones(kx_ids.shape)

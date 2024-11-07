@@ -29,6 +29,8 @@ class Siren_skip_hash(nn.Module):
         self,
         hidden_dim=512,
         levels = 10,
+        n_min=16,
+        size_hashtable = 12,
         n_layers=4,
         out_dim=2,
         omega_0=30,
@@ -40,7 +42,7 @@ class Siren_skip_hash(nn.Module):
                 
         # Layer containing trainable parameters for the embedding
         
-        self.embed_fn = hash_encoder(levels=levels, log2_hashmap_size=12, n_features_per_level=2, n_max=320, n_min=16)
+        self.embed_fn = hash_encoder(levels=levels, log2_hashmap_size=size_hashtable, n_features_per_level=2, n_max=320, n_min=n_min)
         coor_embedd_dim = levels*2 + 2
                 
         # First set of layers (before the first skip connection)

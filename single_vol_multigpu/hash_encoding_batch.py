@@ -31,7 +31,7 @@ class hash_encoder(nn.Module):
     def bilinear_interp(self, x: torch.Tensor, box_indices: torch.Tensor, box_embedds: torch.Tensor) -> torch.Tensor:
         device = x.device
         
-        if box_indices.shape[1] > 2:
+        if box_indices.size(1) > 2:
             weights = torch.norm(box_indices - x[:, None, :], dim=2)
             den = weights.sum(dim=1, keepdim=True)
             
@@ -41,7 +41,7 @@ class hash_encoder(nn.Module):
             weights = weights.to(device)
             box_embedds = box_embedds.to(device)
 
-            Npoints = len(den)
+            Npoints = den.size(0)
             xi_embedding = torch.zeros((Npoints, 2), device = device)
             
             for i in range(4):

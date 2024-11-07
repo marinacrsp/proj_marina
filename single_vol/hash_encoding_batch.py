@@ -20,12 +20,12 @@ class hash_encoder(nn.Module):
             nn.Embedding(self._get_number_of_embeddings(i), self.n_features_per_level)
             for i in range(self.l_max)
         ])
-
+        
     
     def _get_number_of_embeddings(self, level_idx: int) -> int:
         max_size = 2 ** self.log2_hashmap_size
         n_l = int(self.n_min * (self.b ** level_idx).item())
-        n_l_embeddings = (n_l + 4) ** 2
+        n_l_embeddings = (n_l + 5) ** 2
         return min(max_size, n_l_embeddings)
 
     def bilinear_interp(self, x: torch.Tensor, box_indices: torch.Tensor, box_embedds: torch.Tensor) -> torch.Tensor:
@@ -85,7 +85,7 @@ class hash_encoder(nn.Module):
             
             # Determine if the coordinates can be directly mapped or need hashing
             max_hashtable_size = 2 ** self.log2_hashmap_size
-            if max_hashtable_size >= (n_l + 4) ** 2:
+            if max_hashtable_size >= (n_l + 5) ** 2:
                 hashed_box_idx, _ = self._to_1D(box_idx, n_l)
             else:
                 hashed_box_idx = self._hash(box_idx)

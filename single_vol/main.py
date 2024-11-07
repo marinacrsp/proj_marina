@@ -63,7 +63,7 @@ def main():
         dataset_fullysampled,
         batch_size=loader_config["batch_size"],
         num_workers=int(os.environ["SLURM_CPUS_PER_TASK"]),
-        shuffle=True,
+        shuffle=False,
         pin_memory=loader_config["pin_memory"],
     )
 
