@@ -20,7 +20,7 @@ class KCoordDataset(Dataset):
         n_volumes: int,
         n_slices: int = 3,
         with_mask: bool = True,
-        acceleration: int = 4,
+        acceleration: int = 2,
         center_frac: float = 0.15,
     ):
         self.metadata = {}

@@ -43,7 +43,6 @@ class Trainer:
         
         self.lossadded = config["l_pisco"]["addpisco"]
         self.E_epoch = config["l_pisco"]["E_epoch"]
-        self.minibatch = config["l_pisco"]["minibatch_size"]
         self.alpha = config["l_pisco"]["alpha"]
         self.factor = config["l_pisco"]["factor"]
         
@@ -92,12 +91,8 @@ class Trainer:
             if (epoch_idx + 1) >= self.E_epoch:
                 
                 if self.lossadded == True:
-                    
-                    ## Evaluate only pisco loss every 20 samples
-                    # if (epoch_idx + 1) % 20 == 0:
-                    
                     empirical_pisco, epoch_res1, epoch_res2 = self._train_with_Lpisco()
-                    # self.grappa_matrix = w_grappa
+
                     print(f"EPOCH {epoch_idx}  Pisco loss: {empirical_pisco}\n")
                     self.writer.add_scalar("Residuals/Linear", epoch_res1, epoch_idx)
                     self.writer.add_scalar("Residuals/Regularizer", epoch_res2, epoch_idx)
@@ -138,9 +133,6 @@ class Trainer:
             # Can be thought as a moving average (with "stride" `batch_size`) of the loss.
             batch_loss = self.loss_fn(outputs, targets)
             
-            # NOTE: Uncomment for some of the loss functions (e.g. 'MSEDistLoss').
-            # batch_loss = self.loss_fn(outputs, targets, inputs)
-
             batch_loss.backward()
             
             self.optimizer.step()
@@ -152,116 +144,62 @@ class Trainer:
     
     
     def _train_with_Lpisco (self):
-        torch.cuda.empty_cache()
         self.model.train()
-        
-        
-        n_obs = 0
-        avg_loss = 0.0
-        avg_res1 = 0.0
-        avg_res2 = 0.0
         vol_id = 0
         shape = self.dataloader_pisco.dataset.metadata[vol_id]["shape"]
         _, n_coils, _, _ = shape
-        W_batch = []
+        batch_ws = []
         
         for inputs, _ in self.dataloader_pisco:
-            # self.optimizer.zero_grad(set_to_none=True)
             
             #### Compute grid 
-            t_coordinates, patch_coordinates, Nn = get_grappa_matrixes(inputs, shape)
+            t_coordinates, patch_coordinates, Nn = get_grappa_matrixes(inputs, shape, patch_size=9)
             
             # Estimate the minibatch list of Ws together with the averaged residuals of the minibatch 
-            Ws, batch_r1, batch_r2 = self.predict_ws(t_coordinates, patch_coordinates, n_coils, Nn)
+            ws, batch_r1, batch_r2 = self.predict_ws(t_coordinates, patch_coordinates, n_coils, Nn)
+            batch_ws.append(ws)
+            # print(len(batch_ws))
             
-            # Compute the pisco loss
-            batch_Lp = L_pisco(Ws) * self.factor
-            assert batch_Lp.requires_grad, "batch_Lp does not require gradients."
-            
-            # Update the model based on the Lpisco loss
-            batch_Lp.backward()
-            
-            self.optimizer.step()
+        # Compute the pisco loss
+        batch_Lp = L_pisco(batch_ws) * self.factor
+        
+        assert batch_Lp.requires_grad, "batch_Lp does not require gradients."
+        
+        
+        # Update the model based on the Lpisco loss
+        batch_Lp.backward()
+        
+        self.optimizer.step()
 
-            # Add up the losses and residual averages to the batch sums
-            avg_loss += batch_Lp.item() * len(inputs)
-            avg_res1 += batch_r1
-            avg_res2 += batch_r2
-            
-            n_obs += len(inputs)
-            
-            
-        # From this set of points, the following residuals and losses are obtained
-        avg_loss = avg_loss / n_obs
-        avg_res1 = avg_res1/n_obs
-        # w_grappa = np.mean(W_batch, axis = 0)
-        # avg_res2 = avg_res2/n_obs
-        return avg_loss, avg_res1, avg_res2
+        return batch_Lp.item(), batch_r1, batch_r2
 
     ###########################################################################
     ###########################################################################
     ###########################################################################
     
     def predict_ws (self, t_coordinates, patch_coordinates, n_coils, Nn):
-        t_coordinates, patch_coordinates = t_coordinates.to(self.device), patch_coordinates.to(self.device) 
         
-        coil_max = 4
-        coil_loops = n_coils//coil_max
-        lastcoils = 0
-        t_predicted_list = []
-        patch_predicted_list = []
+        t_predicted = torch.zeros((t_coordinates.shape[0], n_coils), dtype=torch.complex64)
+        t_coordinates, patch_coordinates = t_coordinates.to(self.device), patch_coordinates.to(self.device)
+        
+        # 3x3 neighbourhood patch surrounding the target point
+        neighborhood_corners = torch.zeros((t_coordinates.shape[0], Nn, n_coils), dtype=torch.complex64)
 
-        for idx in range(coil_loops):
-            
-            thiscoils = coil_max*idx + coil_max
-            t_coordinates_flat = t_coordinates[:,lastcoils:thiscoils,...].reshape(t_coordinates.shape[0]*coil_max,t_coordinates.shape[2])
-            patch_coordinates_flat = patch_coordinates[:,lastcoils:thiscoils,...].reshape(patch_coordinates.shape[0]*coil_max,t_coordinates.shape[2])
-            
-            # Predict the kvalues every 4 coils
-            t_predicted_coil = torch.view_as_complex(self.model(t_coordinates_flat))
-            patch_predicted_coil = torch.view_as_complex(self.model(patch_coordinates_flat)).detach()
-            
-            t_predicted_list.append(t_predicted_coil)
-            patch_predicted_list.append(patch_predicted_coil)
-            
-            lastcoils = thiscoils
-    
-        t_predicted = torch.cat(t_predicted_list, dim=0)
-        patch_predicted = torch.cat(patch_predicted_list, dim=0)
-        
-        # # Reshape the matrixes back to their corresponding shapes
-        t_predicted = t_predicted.view(t_coordinates.shape[0], n_coils) # NOTE t_predicted : Nm x Nc
-        patch_predicted = patch_predicted.view(t_coordinates.shape[0], Nn, n_coils) # NOTE patch_predicted : Nm x Nn x Nc
-        
-        ##### Estimate the Ws for a random subset of values
-        T_s, Ns = split_batch(t_predicted, self.minibatch)
-        P_s, _ = split_batch(patch_predicted, self.minibatch)
-        
-        # Estimate the Weight matrixes
-        Ws = []
-        elem1 = 0
-        elem2 = 0
-        
-        if Ns > 1:
-            for i, t_s in enumerate(T_s):
-                p_s = P_s[i]
-                p_s = torch.flatten(p_s, start_dim=1)
-                ws, res1, res2 = compute_Lsquares(p_s, t_s, self.alpha)
-                Ws.append(ws)
-                
-                # Compute an average of the equation residuals
-                elem1 += res1
-                elem2 += res2
-                
-        else:
-            p_s = P_s.view(P_s.shape[0], P_s.shape[1]*n_coils)
-            ws, res1, res2 = compute_Lsquares(p_s, T_s, self.alpha)
-            Ws.append(ws)
-            
-            elem1 += res1
-            elem2 += res2
+        for idx in range(n_coils):
+            t_predicted[:, idx] = torch.view_as_complex(self.model(t_coordinates[:, idx, :]))
 
-        return Ws, elem1/Ns, elem2/Ns
+            for nn in range(Nn):
+                neighborhood_corners[:, nn, idx] = torch.view_as_complex(self.model(patch_coordinates[:, nn, idx, :])).detach()
+                
+        # Detach `patch_predicted` to prevent it from participating in backpropagation
+        patch_predicted = neighborhood_corners.view(neighborhood_corners.shape[0], -1)
+        
+        # Predict the ws matrix from the batch
+        ws, res1, res2 = compute_Lsquares(patch_predicted, t_predicted, self.alpha) # NOTE ws : Nc * Nn x Nc
+        
+        del patch_predicted, t_coordinates, patch_coordinates
+        
+        return ws, res1, res2
     
     @torch.no_grad()
     def predict(self, vol_id, shape, left_idx, right_idx, center_vals):
@@ -308,29 +246,7 @@ class Trainer:
             volume_kspace[
                 point_ids[:, 2], point_ids[:, 3], point_ids[:, 1], point_ids[:, 0]
             ] = outputs
-
-            # ## GRAPPA IMAGE RECONSTRUCTION based on predicted outputs # NOTE : What happens with positions unknown?
-            # ####################################################
-            # t_coordinates, neighbor_coordinates, Nn = get_grappa_matrixes(coords, shape)
-
-            # t_coors = torch.zeros((t_coordinates.shape), dtype=torch.int)
-            # t_coors[...,:2] = t_coordinates[...,:2]
-            # t_coors[...,2] = (denormalize(t_coordinates[...,2], n_slices))
-            # t_coors[...,3] = (denormalize(t_coordinates[...,3], n_coils))
             
-            # nn_coors = torch.zeros((neighbor_coordinates.shape), dtype=torch.int)
-            # nn_coors[...,:2] = neighbor_coordinates[...,:2]
-            # nn_coors[...,2] = (denormalize(neighbor_coordinates[...,2], n_slices))
-            # nn_coors[...,3] = (denormalize(neighbor_coordinates[...,3], n_coils))
-            
-            # neighbor_kspacevals = torch.view_as_complex(volume_kspace[nn_coors[...,2], nn_coors[...,3], nn_coors[...,1], nn_coors[...,0]])
-            # neighbor_kspacevals = neighbor_kspacevals.reshape((t_coordinates.shape[0], Nn, n_coils)).detach().cpu()
-            
-            # ps_kspacevals = neighbor_kspacevals.view(t_coordinates.shape[0], Nn*n_coils)
-            # t_kspacevals = torch.matmul(ps_kspacevals, torch.tensor(self.grappa_matrix))
-            
-            # grappa_volume[t_coors[...,2], t_coors[...,3], t_coors[...,1], t_coors[...,0]] = t_kspacevals
-                    
         # Multiply by the normalization constant.
         volume_kspace = (
             volume_kspace * self.dataloader_consistency.dataset.metadata[vol_id]["norm_cste"]
