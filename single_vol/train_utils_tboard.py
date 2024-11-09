@@ -46,6 +46,7 @@ class Trainer:
         self.alpha = config["l_pisco"]["alpha"]
         self.factor = config["l_pisco"]["factor"]
         self.minibatch = config["l_pisco"]["minibatch"]
+        self.patch_size = config["l_pisco"]["patch_size"]
         self.best_ssim = 0.84
         self.best_psnr = 40.0
         
@@ -157,7 +158,7 @@ class Trainer:
         for inputs, _ in self.dataloader_pisco:
             
             #### Compute grid 
-            t_coordinates, patch_coordinates, Nn = get_grappa_matrixes(inputs, shape, patch_size=9)
+            t_coordinates, patch_coordinates, Nn = get_grappa_matrixes(inputs, shape, patch_size=self.patch_size)
             
             # Estimate the minibatch list of Ws together with the averaged residuals of the minibatch 
             ws, batch_r1, batch_r2 = self.predict_ws(t_coordinates, patch_coordinates, n_coils, Nn)
@@ -214,12 +215,7 @@ class Trainer:
             # Compute an average of the residual terms
             elem1 += res1
             elem2 += res2
-        
-        # Detach `patch_predicted` to prevent it from participating in backpropagation
-        # patch_predicted = neighborhood_corners.view(neighborhood_corners.shape[0], -1)
-        # Predict the ws matrix from the batch
-        # ws, res1, res2 = compute_Lsquares(patch_predicted, t_predicted, self.alpha) # NOTE ws : Nc * Nn x Nc
-                
+
         return Ws, elem1/Ns, elem2/Ns
     
     @torch.no_grad()

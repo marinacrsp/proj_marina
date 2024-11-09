@@ -75,9 +75,10 @@ l_pisco:
   addpisco: True
   # addpisco: False
   E_epoch: 1300
-  alpha: 1.e-6 # Regularizer for the W
-  factor: 0.01 # How much the Lpisco loss gets weighted
+  alpha: 0 # Regularizer for the W
+  factor: 0.001 # How much the Lpisco loss gets weighted
   minibatch: 2000
+  patch_size: 5
 
 
 ###################################################
