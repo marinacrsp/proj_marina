@@ -45,7 +45,7 @@ class Trainer:
         self.E_epoch = config["l_pisco"]["E_epoch"]
         self.alpha = config["l_pisco"]["alpha"]
         self.factor = config["l_pisco"]["factor"]
-        
+        self.minibatch = config["l_pisco"]["minibatch"]
         self.best_ssim = 0.84
         self.best_psnr = 40.0
         
@@ -64,7 +64,7 @@ class Trainer:
         self.hparam_info["hidden_dim"] = config["model"]["params"]["hidden_dim"]
         # self.hparam_info["resolution_levels"] = config["model"]["params"]["levels"]
         self.hparam_info["batch_size"] = config["dataloader"]["batch_size"]
-        
+    
         self.hparam_info["pisco_weightfactor"] = config["l_pisco"]["factor"]
         
         print(self.hparam_info)
@@ -98,6 +98,7 @@ class Trainer:
                     self.writer.add_scalar("Residuals/Regularizer", epoch_res2, epoch_idx)
                         
             print(f"EPOCH {epoch_idx}    avg loss: {empirical_risk}\n")
+            
             # Log the errors
             self.writer.add_scalar("Loss/train", empirical_risk, epoch_idx)
             self.writer.add_scalar("Loss/Pisco", empirical_pisco, epoch_idx)
@@ -146,10 +147,13 @@ class Trainer:
     def _train_with_Lpisco (self):
         self.model.train()
         vol_id = 0
+        n_obs = 0
         shape = self.dataloader_pisco.dataset.metadata[vol_id]["shape"]
         _, n_coils, _, _ = shape
-        batch_ws = []
         
+        err_pisco = 0
+        res1 = 0
+        res2 = 0
         for inputs, _ in self.dataloader_pisco:
             
             #### Compute grid 
@@ -157,21 +161,23 @@ class Trainer:
             
             # Estimate the minibatch list of Ws together with the averaged residuals of the minibatch 
             ws, batch_r1, batch_r2 = self.predict_ws(t_coordinates, patch_coordinates, n_coils, Nn)
-            batch_ws.append(ws)
-            # print(len(batch_ws))
+                        
+            # Compute the pisco loss
+            batch_Lp = L_pisco(ws) * self.factor
             
-        # Compute the pisco loss
-        batch_Lp = L_pisco(batch_ws) * self.factor
+            assert batch_Lp.requires_grad, "batch_Lp does not require gradients."
         
-        assert batch_Lp.requires_grad, "batch_Lp does not require gradients."
+            # Update the model based on the Lpisco loss
+            batch_Lp.backward()
         
-        
-        # Update the model based on the Lpisco loss
-        batch_Lp.backward()
-        
-        self.optimizer.step()
+            self.optimizer.step()
 
-        return batch_Lp.item(), batch_r1, batch_r2
+            err_pisco += batch_Lp.item()
+            res1 += batch_r1
+            res2 += batch_r2
+            n_obs += 1
+            
+        return err_pisco/n_obs, res1/n_obs, res2/n_obs
 
     ###########################################################################
     ###########################################################################
@@ -190,16 +196,31 @@ class Trainer:
 
             for nn in range(Nn):
                 neighborhood_corners[:, nn, idx] = torch.view_as_complex(self.model(patch_coordinates[:, nn, idx, :])).detach()
-                
+        
+        ##### Estimate the Ws for a random subset of values
+        T_s, Ns = split_batch(t_predicted, self.minibatch)
+        P_s, _ = split_batch(neighborhood_corners, self.minibatch)
+        
+        # Estimate the Weight matrixes
+        Ws = []
+        elem1 = 0
+        elem2 = 0
+        for i, t_s in enumerate(T_s):
+            p_s = P_s[i]
+            p_s = torch.flatten(p_s, start_dim=1)
+            ws, res1, res2 = compute_Lsquares(p_s, t_s, self.alpha)
+            Ws.append(ws)
+            
+            # Compute an average of the residual terms
+            elem1 += res1
+            elem2 += res2
+        
         # Detach `patch_predicted` to prevent it from participating in backpropagation
-        patch_predicted = neighborhood_corners.view(neighborhood_corners.shape[0], -1)
-        
+        # patch_predicted = neighborhood_corners.view(neighborhood_corners.shape[0], -1)
         # Predict the ws matrix from the batch
-        ws, res1, res2 = compute_Lsquares(patch_predicted, t_predicted, self.alpha) # NOTE ws : Nc * Nn x Nc
-        
-        del patch_predicted, t_coordinates, patch_coordinates
-        
-        return ws, res1, res2
+        # ws, res1, res2 = compute_Lsquares(patch_predicted, t_predicted, self.alpha) # NOTE ws : Nc * Nn x Nc
+                
+        return Ws, elem1/Ns, elem2/Ns
     
     @torch.no_grad()
     def predict(self, vol_id, shape, left_idx, right_idx, center_vals):

@@ -12,39 +12,39 @@ def denormalize (n_data, norm_factor):
     data = ((n_data + 1) * (norm_factor - 1))/2
     return data
 
-# def split_batch (data, size_minibatch):
-#     """Function that performs the random spliting of the dataloader batch into Ns subsets of generally the same size"""
-#     last_idx = 0    
-#     total_batch = data.shape[0]
+def split_batch (data, size_minibatch):
+    """Function that performs the random spliting of the dataloader batch into Ns subsets"""
+    last_idx = 0    
+    total_batch = data.shape[0]
 
-#     if total_batch <= size_minibatch:
-#         sample_batch = data
-#         iter = 1
-
-#     else:
-#         iter = total_batch/size_minibatch
-#         last_idx = 0
-#         if 1 < iter < 2:
-#             iter = 2
-#         else:
-#             iter = int(np.round(iter))
+    if total_batch <= size_minibatch:
+        sample_batch = data
+        iter = 1
+    else:
         
-#         sample_batch = []
-#         for i in range(iter):
-#             if i == 0: # NOTE first iteration
-#                 mini = data[:size_minibatch,...]
-#                 last_idx += size_minibatch
+        iter = total_batch/size_minibatch
+        last_idx = 0
+        if 1 < iter < 2:
+            iter = 2
+        else:
+            iter = int(np.round(iter))
+            
+        sample_batch = []
+        for i in range(iter):
+            if i == 0: # NOTE first iteration
+                mini = data[:size_minibatch,...]
+                last_idx += size_minibatch
                 
-#             elif i==iter-1: # NOTE last iteration
-#                 mini = data[last_idx + 1: , ...]
+            elif i==iter-1: # NOTE last iteration
+                mini = data[last_idx + 1: , ...]
                 
-#             else:
-#                 mini = data[last_idx + 1 : last_idx + size_minibatch, ...]
-#                 last_idx += size_minibatch
+            else:
+                mini = data[last_idx + 1 : last_idx + size_minibatch, ...]
+                last_idx += size_minibatch
                 
-#             sample_batch.append(mini)
+            sample_batch.append(mini)
     
-#     return sample_batch, iter
+    return sample_batch, iter
 
 def compute_Lsquares (X, Y, alpha):
     """Solves the Least Squares giving matrix W"""
@@ -65,29 +65,44 @@ def compute_Lsquares (X, Y, alpha):
 
     return W, elem1, elem2
 
-def distance_w (w, w_mean):
-    stdev = 0.0
+# def distance_w (w, w_mean):
+#     stdev = 0.0
 
-    for t, w_batch in enumerate(w):
-        diff = w_batch.flatten() - w_mean.flatten()
-        err = torch.linalg.norm(diff, ord=1)
+#     for t, w_batch in enumerate(w):
+#         diff = w_batch.flatten() - w_mean.flatten()
+#         err = torch.linalg.norm(diff, ord=1)
 
-        stdev += err
+#         stdev += err
         
-    return stdev/t
+#     return stdev/t
+
+# def L_pisco (Ws):
+#     """Function to compute the Pisco loss
+#     Inputs:
+#     - Ws (list) : list of different grappa matrixes
+#     """
+#     # Compare the Ws, obtain the Pisco loss
+#     w_mean = torch.mean(torch.stack(Ws), dim = 0)
+#     stdevs = distance_w(Ws, w_mean)
+
+#     return stdevs
 
 def L_pisco (Ws):
     """Function to compute the Pisco loss
     Inputs:
-    - Ws (list) : list of different grappa matrixes
+    - Ws (list) : contains the corresponding Ws computed from Least squares
+    
     """
     # Compare the Ws, obtain the Pisco loss
-
-    w_mean = torch.mean(torch.stack(Ws), dim = 0)
-    stdevs = distance_w(Ws, w_mean)
-
-    return stdevs
-
+    total_loss = 0
+    Ns = len(Ws)
+    for i in range(Ns):
+        for j in range(i+1, Ns):
+            diff = Ws[i].flatten() - Ws[j].flatten()
+            pisco = torch.linalg.norm(diff, ord=1)
+            total_loss += pisco
+                
+    return (1/Ns**2) * total_loss
     
 def get_grappa_matrixes (inputs, shape, patch_size):
     """Function that generates two matrixes out of the input coordinates of the batch points     
