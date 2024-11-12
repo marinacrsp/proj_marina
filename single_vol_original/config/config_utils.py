@@ -38,7 +38,7 @@ def parse_args() -> argparse.Namespace:
         "--config",
         type=str,
         help="Path to configuration file.",
-        default="./single_vol/config/config.yaml",
+        default="./single_vol_original/config/config.yaml",
     )
 
     device = "cuda" if cuda.is_available() else "cpu"

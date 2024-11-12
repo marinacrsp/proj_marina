@@ -37,6 +37,7 @@ class Trainer:
         self.checkpoint_interval = config["checkpoint_interval"]
         self.path_to_out = Path(config["path_to_outputs"])
         self.timestamp = config["timestamp"]
+        
         self.writer = SummaryWriter(self.path_to_out / self.timestamp)
 
         # Ground truth (used to compute the evaluation metrics).

@@ -102,7 +102,7 @@ class Trainer:
             )
 
             self.optimizer.zero_grad(set_to_none=True)
-
+    
             outputs = self.model(coords, latent_embeddings)
             # Can be thought as a moving average (with "stride" `batch_size`) of the loss.
             batch_loss = self.loss_fn(outputs, targets, latent_embeddings)

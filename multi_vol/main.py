@@ -69,6 +69,7 @@ def main():
 
     model = MODEL_CLASSES[config["model"]["id"]](**model_params)
 
+## NOTE : Train or inference
     if config["runtype"] == "test":
         assert (
             "model_checkpoint" in config.keys()

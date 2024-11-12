@@ -41,33 +41,61 @@ class MLP(nn.Module):
         return self.output_layer(x)
 
 
-# NOTE: MLP Network, using Fourier Features (instead of Positional Encoding).
-# class MLP(nn.Module):
-#     def __init__(self, coord_dim=4, fourier_dim=512, hidden_dim=512, n_layers=8, out_dim=2) -> None:
-#         super().__init__()
-#         # Random Gaussian matrix used in the computation of Fourier features.
-#         B = torch.randn((coord_dim, fourier_dim//2), dtype=torch.float32)
-#         self.register_buffer('B', B)
 
-#         self.linear_layers = [nn.Linear(fourier_dim, hidden_dim)]
-#         self.linear_layers.extend([nn.Linear(hidden_dim, hidden_dim) for _ in range(n_layers-1)])
-#         self.linear_layers = nn.ModuleList(self.linear_layers)
+# class Siren(nn.Module):
+#     def __init__(
+#         self,
+#         coord_dim=4,
+#         hidden_dim=512,
+#         n_layers=8,
+#         out_dim=2,
+#         omega_0=30,
+#         L=10,
+#         dropout_rate=0.20,
+#     ) -> None:
+#         super().__init__()
+#         self.L = L
+
+#         # Precompute the scaling factors for the coordinate encoding.
+#         L_mult = torch.pow(2, torch.arange(self.L)) * math.pi
+#         self.register_buffer("L_mult", L_mult)
+#         fourier_dim = self.L * 2 * coord_dim
+
+#         self.sine_layers = [
+#             SineLayer(fourier_dim, hidden_dim, is_first=True, omega_0=omega_0)
+#         ]
+        
+#         # NOTE : Introducing residual connection
+#         for layer_idx in range(n_layers-1):
+#             if layer_idx == n_layers//2 - 1:
+#                 self.res_connection = layer_idx + 1 
+#                 self.sine_layers.append(
+#                 SineLayer(hidden_dim + fourier_dim, hidden_dim, is_first=False, omega_0=omega_0)
+#             )
+#             else:
+#                 self.sine_layers.append(
+#                 SineLayer(hidden_dim, hidden_dim, is_first=False, omega_0=omega_0)
+#             )
+#         self.sine_layers = nn.ModuleList(self.sine_layers)
 
 #         self.output_layer = nn.Linear(hidden_dim, out_dim)
-#         self.activation = nn.ReLU()
-
+#         with torch.no_grad():
+#             self.output_layer.weight.uniform_(
+#                 -np.sqrt(6 / hidden_dim) / omega_0, np.sqrt(6 / hidden_dim) / omega_0
+#             )
 
 #     def forward(self, coords):
-#         # 1. Generate Fourier features.
-#         x = torch.cat([torch.sin(coords @ self.B), torch.cos(coords @ self.B)], dim=-1)
+#         x = coords.unsqueeze(-1) * self.L_mult
+#         x = torch.cat([torch.sin(x), torch.cos(x)], dim=-1)
+#         x = x.view(x.size(0), -1)
+#         x0 = x.clone()
 
-#         # 3. Forward pass.
-#         for layer in self.linear_layers:
+#         for layer_idx, layer in enumerate(self.sine_layers):
+#             if layer_idx == self.res_connection:
+#                 x = torch.cat([x0, x], dim=-1)
 #             x = layer(x)
-#             x = self.activation(x)
 
 #         return self.output_layer(x)
-
 
 class Siren(nn.Module):
     def __init__(
@@ -88,34 +116,29 @@ class Siren(nn.Module):
         self.register_buffer("L_mult", L_mult)
         fourier_dim = self.L * 2 * coord_dim
 
-        self.sine_layers = [
-            SineLayer(fourier_dim, hidden_dim, is_first=True, omega_0=omega_0)
-        ]
-        for _ in range(n_layers - 1):
+        self.sine_layers = [SineLayer(fourier_dim, hidden_dim, is_first=True, omega_0=omega_0)]
+        
+        # NOTE : Introducing residual connection
+        for _ in range(n_layers-1):
             self.sine_layers.append(
-                SineLayer(hidden_dim, hidden_dim, is_first=False, omega_0=omega_0)
-            )
-        self.sine_layers = nn.ModuleList(self.sine_layers)
-
+                SineLayer(hidden_dim, hidden_dim, is_first=False, omega_0=omega_0))
+        #
+        
         self.output_layer = nn.Linear(hidden_dim, out_dim)
         with torch.no_grad():
             self.output_layer.weight.uniform_(
                 -np.sqrt(6 / hidden_dim) / omega_0, np.sqrt(6 / hidden_dim) / omega_0
             )
 
-        # self.dropout = nn.Dropout(dropout_rate)
-
     def forward(self, coords):
         x = coords.unsqueeze(-1) * self.L_mult
         x = torch.cat([torch.sin(x), torch.cos(x)], dim=-1)
         x = x.view(x.size(0), -1)
-
-        for layer in self.sine_layers:
+        
+        for layer_idx, layer in enumerate(self.sine_layers):
             x = layer(x)
-            # x = self.dropout(x)
-
         return self.output_layer(x)
-
+        
 
 # NOTE: Siren Network, using Fourier Features (instead of Positional Encoding).
 # class Siren(nn.Module):
