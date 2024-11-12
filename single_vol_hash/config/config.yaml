@@ -7,7 +7,7 @@ path_to_outputs: /scratch_net/ken/mcrespo/proj_marina/logs/12_11/ # TODO: SET.
 dataset:
   path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/file_brain_AXT1POST_203_6000861.h5 # TODO: SET.
   n_slices: 3
-  with_mask: True
+  with_mask: False
   mask_type: Random
   acceleration: 4
   center_frac: 0.15
@@ -19,17 +19,9 @@ dataset_full:
   center_frac: 0.15
 
 dataloader:
-  batch_size: 120_000
+  batch_size: 80_000
   pin_memory: False
-
-# model:
-#   id: Siren0
-#   params:
-#     coord_dim: 4
-#     hidden_dim: 512
-#     L : 10
-#     n_layers: 8
-
+  
 model:
   id: SirenHash
   params:
@@ -57,14 +49,14 @@ scheduler:
     step_size: 20_000
 
 # Training Process
-n_epochs: 1000
+n_epochs: 2000
 log_interval: 100
 checkpoint_interval: 2000
 
 l_pisco:
-  # addpisco: True
-  addpisco: False
-  E_epoch: 200
+  addpisco: True
+  # addpisco: False
+  E_epoch: 1200
   alpha: 1.e-6 # Regularizer for the W
   factor: 0.01 # How much the Lpisco loss gets weighted
   minibatch: 2000

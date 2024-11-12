@@ -28,6 +28,6 @@ conda activate pytcu11
 
 # torchrun single_vol_multigpu/main.py
 # python -u multi_vol/main.py
-python -u single_vol/main.py
-# python -u single_vol_hash/main.py
+# python -u single_vol/main.py
+python -u single_vol_hash/main.py
 # python -u single_vol_original/main.py

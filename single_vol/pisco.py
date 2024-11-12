@@ -64,27 +64,6 @@ def compute_Lsquares (X, Y, alpha):
 
     return W, elem1, elem2
 
-# def distance_w (w, w_mean):
-#     stdev = 0.0
-
-#     for t, w_batch in enumerate(w):
-#         diff = w_batch.flatten() - w_mean.flatten()
-#         err = torch.linalg.norm(diff, ord=1)
-
-#         stdev += err
-        
-#     return stdev/t
-
-# def L_pisco (Ws):
-#     """Function to compute the Pisco loss
-#     Inputs:
-#     - Ws (list) : list of different grappa matrixes
-#     """
-#     # Compare the Ws, obtain the Pisco loss
-#     w_mean = torch.mean(torch.stack(Ws), dim = 0)
-#     stdevs = distance_w(Ws, w_mean)
-
-#     return stdevs
 
 def L_pisco (Ws):
     """Function to compute the Pisco loss
@@ -112,18 +91,14 @@ def get_grappa_matrixes (inputs, shape, patch_size, normalized: bool):
     """
 
     n_slices, n_coils, height, width = shape
-    
+    norm_cte = [width, height, n_slices, n_coils]
     if normalized == False:
         k_coors = inputs
     else:
         k_coors = torch.zeros((inputs.shape[0], 4), dtype=torch.int)
-        # NOTE Denormalize only the coordinates that contain normalized inputs
-        k_coors[:,:2] = inputs[:,:2]
-        # k_coors[:,0] = denormalize_fn(inputs[:,0], height)
-        # k_coors[:,1] = denormalize_fn(inputs[:,1], width)
-        k_coors[:,2] = denormalize_fn(inputs[:,2], n_slices)
-        k_coors[:,3] = denormalize_fn(inputs[:,3], n_coils) 
-    
+        for idx in range(len(shape)):
+            k_coors[:,idx] = denormalize_fn(inputs[:,idx], norm_cte[idx])
+
     # Remove the edges from the target coordinates
     leftmost_vedge = (k_coors[:, 1] == 0)
     rightmost_vedge = (k_coors[:, 1] == 319)
@@ -155,24 +130,18 @@ def get_grappa_matrixes (inputs, shape, patch_size, normalized: bool):
     ### For predicting, normalize coordinates back to [-1,1]
     # Normalize the NP neighbourhood coordinates
     n_r_patch = torch.zeros((r_patch.shape), dtype=torch.float16)
-    n_r_patch[...,:2] = r_patch[...,:2] # NOTE Normalize only the coordinates that contain normalized inputs
-    # n_r_patch[:,:,:,0] = normalize_fn(r_patch[:,:,:,0], width)
-    # n_r_patch[:,:,:,1] = normalize_fn(r_patch[:,:,:,1], height)
-    n_r_patch[:,:,:,2] = normalize_fn(r_patch[:,:,:,2], n_slices)
-    n_r_patch[:,:,:,3] = normalize_fn(r_patch[:,:,:,3], n_coils)
+    for idx in range(len(shape)):
+        n_r_patch[...,idx] = normalize_fn(r_patch[...,idx], norm_cte[idx])
     
     # Flatten the first dimensions for the purpose of kvalue prediction
     Nn = n_r_patch.shape[1]
-    # n_r_patch = n_r_patch.view(-1, n_coils, 4)
 
     # Normalize the Nt targets coordinates
     n_r_koors = torch.zeros((r_kcoors.shape), dtype=torch.float16)
-    n_r_koors[:,:,:2] = r_kcoors[:,:,:2] # NOTE Normalize only the coordinates that contain normalized inputs
-    # n_r_koors[:,:,0] = normalize_fn(r_kcoors[:,:,0], width)
-    # n_r_koors[:,:,1] = normalize_fn(r_kcoors[:,:,1], height)
-    n_r_koors[:,:,2] = normalize_fn(r_kcoors[:,:,2], n_slices)
-    n_r_koors[:,:,3] = normalize_fn(r_kcoors[:,:,3], n_coils)
     
+    for idx in range(len(shape)):
+        n_r_koors[...,idx] = normalize_fn(r_kcoors[...,idx], norm_cte[idx])
+        
     return n_r_koors, n_r_patch, Nn
 
 

@@ -119,8 +119,6 @@ def get_grappa_matrixes (inputs, shape, patch_size, normalized: bool):
         k_coors = torch.zeros((inputs.shape[0], 4), dtype=torch.int)
         # NOTE Denormalize only the coordinates that contain normalized inputs
         k_coors[:,:2] = inputs[:,:2]
-        # k_coors[:,0] = denormalize_fn(inputs[:,0], height)
-        # k_coors[:,1] = denormalize_fn(inputs[:,1], width)
         k_coors[:,2] = denormalize_fn(inputs[:,2], n_slices)
         k_coors[:,3] = denormalize_fn(inputs[:,3], n_coils) 
     
@@ -156,8 +154,6 @@ def get_grappa_matrixes (inputs, shape, patch_size, normalized: bool):
     # Normalize the NP neighbourhood coordinates
     n_r_patch = torch.zeros((r_patch.shape), dtype=torch.float16)
     n_r_patch[...,:2] = r_patch[...,:2] # NOTE Normalize only the coordinates that contain normalized inputs
-    # n_r_patch[:,:,:,0] = normalize_fn(r_patch[:,:,:,0], width)
-    # n_r_patch[:,:,:,1] = normalize_fn(r_patch[:,:,:,1], height)
     n_r_patch[:,:,:,2] = normalize_fn(r_patch[:,:,:,2], n_slices)
     n_r_patch[:,:,:,3] = normalize_fn(r_patch[:,:,:,3], n_coils)
     
@@ -168,8 +164,6 @@ def get_grappa_matrixes (inputs, shape, patch_size, normalized: bool):
     # Normalize the Nt targets coordinates
     n_r_koors = torch.zeros((r_kcoors.shape), dtype=torch.float16)
     n_r_koors[:,:,:2] = r_kcoors[:,:,:2] # NOTE Normalize only the coordinates that contain normalized inputs
-    # n_r_koors[:,:,0] = normalize_fn(r_kcoors[:,:,0], width)
-    # n_r_koors[:,:,1] = normalize_fn(r_kcoors[:,:,1], height)
     n_r_koors[:,:,2] = normalize_fn(r_kcoors[:,:,2], n_slices)
     n_r_koors[:,:,3] = normalize_fn(r_kcoors[:,:,3], n_coils)
     

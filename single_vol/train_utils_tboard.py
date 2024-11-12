@@ -229,7 +229,8 @@ class Trainer:
         """Reconstruct MRI volume (k-space)."""
         self.model.eval()
         n_slices, n_coils, height, width = shape
-
+        norm_cte = [width, height, n_slices, n_coils]
+        
         # Create tensors of indices for each dimension
         kx_ids = torch.cat([torch.arange(left_idx), torch.arange(right_idx, width)])
         ky_ids = torch.arange(height)
@@ -257,11 +258,11 @@ class Trainer:
                 point_ids, dtype=torch.float32, device=self.device
             )
             
-            # For hash encodings normalize only the last two coordinates
-            coords[:, :2] = point_ids[:, :2]
+            coords[:, 0] = (2 * point_ids[:, 0]) / (width - 1) - 1
+            coords[:, 1] = (2 * point_ids[:, 1]) / (height - 1) - 1
             coords[:, 2] = (2 * point_ids[:, 2]) / (n_slices - 1) - 1
             coords[:, 3] = (2 * point_ids[:, 3]) / (n_coils - 1) - 1
-
+            
             outputs = self.model(coords)
             # "Fill in" the unsampled region.
             volume_kspace[
@@ -282,6 +283,7 @@ class Trainer:
         ### Compute the result of Grappa interpolation from the computed volume
         volume_img = rss(inverse_fft2_shift(volume_kspace))
         
+        
         if self.add_pisco == True and (epoch_idx + 1) >= self.E_epoch:
             grappa_volume = torch.zeros(shape, dtype = torch.complex64)
 
@@ -294,14 +296,12 @@ class Trainer:
                 t_coors, nn_coors, Nn = get_grappa_matrixes(points_ids, shape, patch_size=self.patch_size, normalized=False)
                 
                 nt_coors = torch.zeros((t_coors.shape), dtype=torch.int)
-                nt_coors[...,:2] = t_coors[...,:2]
-                nt_coors[...,2] = (denormalize_fn(t_coors[...,2], n_slices))
-                nt_coors[...,3] = (denormalize_fn(t_coors[...,3], n_coils))
-                
+                for idx in range(len(shape)):
+                    nt_coors[:,idx] = denormalize_fn(nt_coors[:,idx], norm_cte[idx])
+
                 nnn_coors = torch.zeros((nn_coors.shape), dtype=torch.int)
-                nnn_coors[...,:2] = nn_coors[...,:2]
-                nnn_coors[...,2] = (denormalize_fn(nn_coors[...,2], n_slices))
-                nnn_coors[...,3] = (denormalize_fn(nn_coors[...,3], n_coils))
+                for idx in range(len(shape)):
+                    nnn_coors[:,idx] = denormalize_fn(nnn_coors[:,idx], norm_cte[idx])
                 
                 neighbor_kspacevals = torch.tensor(volume_kspace[nnn_coors[...,2], nnn_coors[...,3], nnn_coors[...,1], nnn_coors[...,0]])
                 neighbor_kspacevals = neighbor_kspacevals.reshape((t_coors.shape[0], Nn, n_coils))
