@@ -153,7 +153,7 @@ def get_grappa_matrixes (inputs, shape, patch_size, normalized: bool):
     ### For predicting, normalize coordinates back to [-1,1]
     # Normalize the NP neighbourhood coordinates
     n_r_patch = torch.zeros((r_patch.shape), dtype=torch.float16)
-    n_r_patch[...,:2] = r_patch[...,:2] # NOTE Normalize only the coordinates that contain normalized inputs
+    n_r_patch[:,:,:,:2] = r_patch[:,:,:,:2] # NOTE Normalize only the coordinates that contain normalized inputs
     n_r_patch[:,:,:,2] = normalize_fn(r_patch[:,:,:,2], n_slices)
     n_r_patch[:,:,:,3] = normalize_fn(r_patch[:,:,:,3], n_coils)
     

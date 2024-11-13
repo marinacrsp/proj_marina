@@ -40,13 +40,13 @@ class Siren_skip_hash(nn.Module):
         coor_embedd_dim = levels*2 + 2
                 
         # First set of layers (before the first skip connection)
-        self.sinelayers = nn.ModuleList([SineLayer_hash(coor_embedd_dim, hidden_dim, is_first=True, omega_0=omega_0)])
+        self.sinelayers = nn.ModuleList([SineLayer(coor_embedd_dim, hidden_dim, is_first=True, omega_0=omega_0)])
         for layer_idx in range(n_layers-1):
             if layer_idx == n_layers//2 - 1:
-                self.sinelayers.append(SineLayer_hash(hidden_dim + coor_embedd_dim, hidden_dim, is_first=False, omega_0=omega_0))
+                self.sinelayers.append(SineLayer(hidden_dim + coor_embedd_dim, hidden_dim, is_first=False, omega_0=omega_0))
                 self.res_connection = layer_idx + 1
             else:
-                self.sinelayers.append(SineLayer_hash(hidden_dim, hidden_dim, is_first=False, omega_0=omega_0))
+                self.sinelayers.append(SineLayer(hidden_dim, hidden_dim, is_first=False, omega_0=omega_0))
 
         self.sinelayers = nn.ModuleList(self.sinelayers)
         
@@ -66,38 +66,6 @@ class Siren_skip_hash(nn.Module):
                 h1 = torch.cat([h1, h0], dim=-1)
             h1 = layer(h1)
         return self.output_layer(h1)
-
-
-class SineLayer_hash(nn.Module):
-    """Linear layer with sine activation. Adapted from Siren repo"""
-
-    def __init__(
-        self, in_features, out_features, bias=True, is_first=False, omega_0=30
-    ):
-        super().__init__()
-        self.omega_0 = omega_0
-        self.is_first = is_first
-        self.in_features = in_features
-
-        self.linear = nn.Linear(in_features, out_features, bias=bias)
-
-        with torch.no_grad():
-            if self.is_first:
-                self.linear.weight.uniform_(-1 / self.in_features, 1 / self.in_features)
-            else:
-                self.linear.weight.uniform_(
-                    -np.sqrt(6 / self.in_features) / self.omega_0,
-                    np.sqrt(6 / self.in_features) / self.omega_0,
-                )
-
-    def forward(self, x):
-        # NOTE: Uncomment when using batch (or layer) normalization.
-        # x = self.linear(x)
-        # x = self.layer_norm(x)
-        # x = self.batch_norm(x)
-        # return torch.sin(self.omega_0 * x)
-
-        return torch.sin(self.omega_0 * self.linear(x))
 
 
 

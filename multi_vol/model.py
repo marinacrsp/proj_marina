@@ -40,35 +40,36 @@ class Siren(nn.Module):
             if layer_idx == n_layers // 2 - 1:
                 self.res_layer_idx = layer_idx + 1
                 self.sine_layers.append(
-                    SineLayer(
-                        hidden_dim + embedding_dim,
-                        hidden_dim,
-                        is_first=False,
-                        omega_0=omega_0,
-                    )
-                )
+                    SineLayer(hidden_dim + coord_encoding_dim + embedding_dim, hidden_dim, is_first=False, omega_0=omega_0))
             else:
                 self.sine_layers.append(
                     SineLayer(hidden_dim, hidden_dim, is_first=False, omega_0=omega_0)
                 )
                 # self.sine_layers.append(nn.LayerNorm(hidden_dim))
                 # self.sine_layers.append(nn.BatchNorm1d(hidden_dim))
-
-        self.output_layer = SineLayer(hidden_dim, out_dim, is_first=False, omega_0=omega_0)
+        self.sine_layers = nn.ModuleList(self.sine_layers)
+        
+        self.output_layer = nn.Linear(hidden_dim, out_dim)
+        with torch.no_grad():
+            self.output_layer.weight.uniform_(
+                -np.sqrt(6 / hidden_dim) / omega_0, np.sqrt(6 / hidden_dim) / omega_0
+            )
+        # self.output_layer = SineLayer(hidden_dim, out_dim, is_first=False, omega_0=omega_0)
 
         # self.dropout = nn.Dropout(dropout_rate)
 
     def forward(self, coords, latent_embeddings):
-        # Positional encodings.
-        # x = self.embed_fn(coords)
-        x = coords
+        # Hash encode the input coordinates.
+        x = self.embed_fn(coords)
+        
         # Concatenate embeddings and positional encodings.
-        x = torch.cat([latent_embeddings, x], dim=-1)
-
+        x = torch.cat([x, latent_embeddings], dim=-1)
+        x0 = x.clone()
+        
         for layer_idx, layer in enumerate(self.sine_layers):
             # Residual connection.
             if layer_idx == self.res_layer_idx:
-                x = torch.cat([latent_embeddings, x], dim=-1)
+                x = torch.cat([x, x0], dim=-1)
 
             x = layer(x)
 
@@ -78,8 +79,6 @@ class Siren(nn.Module):
 #     def __init__(
 #         self,
 #         coord_dim=4,
-#         levels = 10,
-#         n_min = 16,
 #         size_hashtable = 12,
 #         embedding_dim=256,
 #         hidden_dim=512,

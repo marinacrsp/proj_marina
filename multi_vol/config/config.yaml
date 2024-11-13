@@ -28,7 +28,7 @@ model:
     levels: 5
     n_min: 45
     size_hashtable: 12
-    n_layers: 4
+    n_layers: 6
 
 loss:
   id: MSEL2

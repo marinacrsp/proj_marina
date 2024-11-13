@@ -87,8 +87,7 @@ class KCoordDataset(Dataset):
             ##################################################
             # Convert indices into normalized coordinates in [-1, 1].
             kspace_coords = torch.zeros((kspace_ids.shape[0], 4), dtype=torch.float)
-            kspace_coords[:, 0] = kspace_ids[:, 0]
-            kspace_coords[:, 1] = kspace_ids[:, 1]
+            kspace_coords[:, :2] = kspace_ids[:, :2]
             kspace_coords[:, 2] = (2 * kspace_ids[:, 2]) / (n_slices - 1) - 1
             kspace_coords[:, 3] = (2 * kspace_ids[:, 3]) / (n_coils - 1) - 1
 

@@ -97,6 +97,8 @@ class Trainer:
         self.model.train()
         for inputs, targets in self.dataloader:
             inputs, targets = inputs.to(self.device), targets.to(self.device)
+            
+            # Inputs has dimension Nm x 5, position 0 corresponds to volID
             coords, latent_embeddings = inputs[:, 1:], self.embeddings(
                 inputs[:, 0].long()
             )
@@ -156,8 +158,10 @@ class Trainer:
                 point_ids, dtype=torch.float32, device=self.device
             )
 
-            coords[:, 0] = (2 * point_ids[:, 0]) / (width - 1) - 1
-            coords[:, 1] = (2 * point_ids[:, 1]) / (height - 1) - 1
+            # Normalize the necessary coordinates for hash encoding to work
+            coords[:, :2] = point_ids[:, :2]
+            # coords[:, 0] = (2 * point_ids[:, 0]) / (width - 1) - 1
+            # coords[:, 1] = (2 * point_ids[:, 1]) / (height - 1) - 1
             coords[:, 2] = (2 * point_ids[:, 2]) / (n_slices - 1) - 1
             coords[:, 3] = (2 * point_ids[:, 3]) / (n_coils - 1) - 1
 

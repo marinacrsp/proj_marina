@@ -70,7 +70,6 @@ class KCoordDataset(Dataset):
             if with_mask:
                 kx_ids = torch.where(mask.squeeze())[0]
             else:
-                # kx_ids = torch.arange(width)
                 kx_ids = torch.from_numpy(np.setdiff1d(np.arange(width), np.arange(left_idx, right_idx))) # NOTE: Uncomment to include all the datapoints (fully-sampled volume), with the exception of the center region.
             ky_ids = torch.arange(height)
             kz_ids = torch.arange(n_slices)
@@ -84,14 +83,16 @@ class KCoordDataset(Dataset):
             ##################################################
             # Convert indices into normalized coordinates in [-1, 1].
             kspace_coords = torch.zeros((kspace_ids.shape[0], 4), dtype=torch.float)
-            kspace_coords[:, 0] = (2 * kspace_ids[:, 0]) / (width - 1) - 1
-            kspace_coords[:, 1] = (2 * kspace_ids[:, 1]) / (height - 1) - 1
+            kspace_coords[:, :2] = kspace_ids[:, :2]
+            # kspace_coords[:, 0] = (2 * kspace_ids[:, 0]) / (width - 1) - 1
+            # kspace_coords[:, 1] = (2 * kspace_ids[:, 1]) / (height - 1) - 1
             kspace_coords[:, 2] = (2 * kspace_ids[:, 2]) / (n_slices - 1) - 1
             kspace_coords[:, 3] = (2 * kspace_ids[:, 3]) / (n_coils - 1) - 1
 
             # Used to determine the latent vector (one per volume).
             vol_ids = torch.tensor([vol_id] * len(kspace_coords)).unsqueeze(1)
 
+            # Appended volume index
             self.inputs.append(torch.cat((vol_ids, kspace_coords), dim=1))
 
             ##################################################

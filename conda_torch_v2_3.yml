@@ -57,3 +57,10 @@ dependencies:
 
 # Remove environment with
 # conda remove --name torch_v2_3 --all
+
+
+# Run interactive bash on GPU
+# srun --time 120 --mem 60GB --gres=gpu:1 --constraint="titan_xp|geforce_gtx_titan_x|geforce_gtx_1080_ti" --pty bash -i
+
+# Log into jupyter notebook interactively on GPU
+# jupyter notebook --no-browser --port 5998 --ip $(hostname -f)

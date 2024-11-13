@@ -1,0 +1,17 @@
+Metadata-Version: 2.1
+Name: pytorch-ranger
+Version: 0.1.1
+Summary: Ranger - a synergistic optimizer using RAdam (Rectified Adam) and LookAhead in one codebase 
+Home-page: https://github.com/mpariente/Ranger-Deep-Learning-Optimizer
+License: Apache
+Platform: UNKNOWN
+Classifier: Development Status :: 4 - Beta
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.5
+Requires-Dist: torch
+
+UNKNOWN
+
+

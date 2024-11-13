@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH  --output=logs/%j.out
 #SBATCH  --cpus-per-task=4
-#SBATCH  --gres=gpu:1
+#SBATCH  --gres=gpu:2
 #SBATCH  --constraint='titan_xp'
 #SBATCH  --mem=50G
 
@@ -26,8 +26,7 @@ conda activate pytcu11
 # echo "WORLD_SIZE=$WORLD_SIZE"
 # echo "RANK=$RANK"
 
-# torchrun single_vol_multigpu/main.py
-# python -u multi_vol/main.py
+python -u multi_vol/main.py
 # python -u single_vol/main.py
-python -u single_vol_hash/main.py
+# python -u single_vol_hash/main.py
 # python -u single_vol_original/main.py
