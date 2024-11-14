@@ -1,4 +1,4 @@
-name: mri-reconstruction
+name: env_s
 channels:
         - conda-forge
         - defaults

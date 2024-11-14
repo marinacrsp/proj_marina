@@ -22,7 +22,7 @@ def ddp_setup(rank, world_size):
     can communicate with one another.
     Args:
         rank: Unique identifier of each process (ranges from 0 to world_size-1).
-        world_size: Total number of processes (in a group).
+        world_size: Total number of processes (total GPUs across all nodes).
     """
     torch.cuda.set_device(rank)
 
@@ -60,16 +60,23 @@ def main(rank: int, world_size: int, config: dict):
 
     dataset = KCoordDataset(**config["dataset"])
     loader_config = config["dataloader"]
+    
+
     # N.B. Since we are using a sampler, we need to set shuffle to False.
+    
+    #################### DATALOADING TO MULTIGPU ######################
     dataloader = DataLoader(
         dataset,
-        batch_size=loader_config["batch_size"],
+        batch_size=loader_config["effective_batch_size"]//world_size,
         num_workers=int(os.environ["SLURM_CPUS_PER_TASK"]),
         shuffle=False,
         sampler=DistributedSampler(dataset),
         pin_memory=loader_config["pin_memory"],
     )
-
+    #####################################################################
+    #####################################################################
+    
+    
     model_params = config["model"]["params"]
     embeddings = torch.nn.Embedding(
         len(dataset.metadata), model_params["embedding_dim"]
@@ -104,6 +111,7 @@ def main(rank: int, world_size: int, config: dict):
                 "model_state_dict"
             ]
             model.load_state_dict(model_state_dict)
+            
             print(f"GPU{rank}] Checkpoint loaded successfully.")
 
         optimizer = OPTIMIZER_CLASSES[config["optimizer"]["id"]](
@@ -119,13 +127,16 @@ def main(rank: int, world_size: int, config: dict):
         optimizer, **config["scheduler"]["params"]
     )
 
+## Only print the characteristics of the main running GPU 
     if rank == 0:
+        
         print(f"model {model}")
         print(f"loss {loss_fn}")
         print(f"optimizer {optimizer}")
         print(f"scheduler {scheduler}")
         print(config)
-        print(f"Number of steps per epoch: {len(dataloader)}")
+        print(f'Total n# sampled points for training : {len(dataset)}')
+        print(f'Total n# of steps per epoch : {len(dataloader)}')
 
     trainer = Trainer(
         dataloader=dataloader,
@@ -142,6 +153,8 @@ def main(rank: int, world_size: int, config: dict):
     destroy_process_group()
 
 
+#### MAIN SCRIPT BEING RUN:
+###################################################################
 if __name__ == "__main__":
     args = parse_args()
     config = load_config(args.config)
@@ -151,11 +164,13 @@ if __name__ == "__main__":
 
     world_size = torch.cuda.device_count()
     assert world_size == int(os.environ["SLURM_GPUS_ON_NODE"])
-
+    
+    print(f'Number of GPUs used for training: {world_size}')
     print(f"Starting {config['runtype']} process...")
+    
     t0 = time.time()
 
-    mp.spawn(main, args=(world_size, config), nprocs=world_size)
+    mp.spawn(main, args=(world_size, config), nprocs=world_size) #NOTE: This is run per GPU
 
     t1 = time.time()
     print(f"Time it took to run: {(t1-t0)/60} min")

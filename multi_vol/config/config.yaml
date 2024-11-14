@@ -1,17 +1,17 @@
 seed: 7
 
-runtype: train
-# runtype: test
+# runtype: train
+runtype: test
 
 path_to_outputs: /scratch_net/ken/mcrespo/proj_marina/logs/multivol
 
-# model_checkpoint: path_to_checkpoint/epoch_1999.pt  # TODO: SET (OR LEAVE COMMENTED).
+model_checkpoint: /scratch_net/ken/mcrespo/proj_marina/logs/multivol/2024-11-13_12h31m52s/checkpoints/epoch_0999.pt  # TODO: SET (OR LEAVE COMMENTED).
 
 dataset:
   path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/
   n_volumes: 3
   n_slices: 2
-  with_mask: False  # NOTE: During training phase, set to False.
+  with_mask: True  # NOTE: During training phase, set to False.
   acceleration: 4
   center_frac: 0.15
 

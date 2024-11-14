@@ -11,6 +11,7 @@ from data_utils import *
 from fastmri.data.transforms import tensor_to_complex_np
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 from torch.nn.parallel import DistributedDataParallel as DDP
+import torch.distributed as dist
 from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 
@@ -94,7 +95,8 @@ class Trainer:
             # In distributed mode, calling the set_epoch() method before creating the DataLoader iterator is necessary to make shuffling work properly.
             # Otherwise, the same ordering will be always used.
             self.dataloader.sampler.set_epoch(epoch_idx)
-            empirical_risk = self._run_epoch()
+            
+            empirical_risk = self._run_epoch(epoch_idx)
 
             if self.device == 0:
                 print(f"EPOCH {epoch_idx}    avg loss: {empirical_risk}\n")
@@ -114,21 +116,35 @@ class Trainer:
             self._log_information(empirical_risk)
             self.writer.close()
 
-    def _run_epoch(self):
+    def _run_epoch(self, epoch_idx):
         # Also known as "empirical risk".
         avg_loss = 0.0
         n_obs = 0
 
         self.model.train()
-        for inputs, targets in self.dataloader:
+        for batch_idx, (inputs, targets) in enumerate(self.dataloader):
             inputs, targets = inputs.to(self.device), targets.to(self.device)
             coords, latent_embeddings = inputs[:, 1:], self.embeddings(
                 inputs[:, 0].long()
             )
-
+            
             self.optimizer.zero_grad(set_to_none=True)
+            
+            # Print batch_size, memory usage
+            rank = dist.get_rank() if dist.is_initialized() else 0  # Rank of the current GPU
+            batch_size = inputs.size(0)  # Batch size on this GPU
+            # Memory usage in MB
+            memory_allocated = torch.cuda.memory_allocated(self.device) / (1024 ** 2)
+            memory_reserved = torch.cuda.memory_reserved(self.device) / (1024 ** 2)
 
+            # Log batch size and memory usage
+            print(f"Epoch {epoch_idx}, Batch {batch_idx} - Rank {rank}, GPU {self.device}: "
+                f"Batch size: {batch_size}, Memory allocated: {memory_allocated} MB, "
+                f"Memory reserved: {memory_reserved} MB")            
+            
+            
             outputs = self.model(coords, latent_embeddings)
+            
             # Can be thought as a moving average (with "stride" `batch_size`) of the loss.
             batch_loss = self.loss_fn(outputs, targets, latent_embeddings)
 
