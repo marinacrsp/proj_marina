@@ -5,7 +5,7 @@ runtype: test
 
 path_to_outputs: /scratch_net/ken/mcrespo/proj_marina/logs/multivol
 
-model_checkpoint: /scratch_net/ken/mcrespo/proj_marina/logs/multivol/2024-11-13_12h31m52s/checkpoints/epoch_0999.pt  # TODO: SET (OR LEAVE COMMENTED).
+model_checkpoint: /scratch_net/ken/mcrespo/proj_marina/logs/multivol/2024-11-11_09h28m59s/checkpoints/epoch_0999.pt  # TODO: SET (OR LEAVE COMMENTED).
 
 dataset:
   path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/
@@ -25,10 +25,9 @@ model:
     coord_dim: 4
     embedding_dim: 512
     hidden_dim: 512
-    levels: 5
-    n_min: 45
-    size_hashtable: 12
-    n_layers: 6
+    n_layers: 8
+    L: 10
+
 
 loss:
   id: MSEL2

@@ -451,6 +451,7 @@ class Trainer:
                 plt.close(fig)
 
     @torch.no_grad()
+    # Save current model gradients (model is wraped in DDP so .module is needed)
     def _save_checkpoint(self, epoch_idx):
         """Save current state of the training process."""
         # Ensure the path exists.

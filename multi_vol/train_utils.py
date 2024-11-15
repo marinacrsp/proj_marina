@@ -159,9 +159,8 @@ class Trainer:
             )
 
             # Normalize the necessary coordinates for hash encoding to work
-            coords[:, :2] = point_ids[:, :2]
-            # coords[:, 0] = (2 * point_ids[:, 0]) / (width - 1) - 1
-            # coords[:, 1] = (2 * point_ids[:, 1]) / (height - 1) - 1
+            coords[:, 0] = (2 * point_ids[:, 0]) / (width - 1) - 1  
+            coords[:, 1] = (2 * point_ids[:, 1]) / (height - 1) - 1
             coords[:, 2] = (2 * point_ids[:, 2]) / (n_slices - 1) - 1
             coords[:, 3] = (2 * point_ids[:, 3]) / (n_coils - 1) - 1
 

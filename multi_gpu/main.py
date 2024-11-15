@@ -17,12 +17,9 @@ from train_utils import *
 
 def ddp_setup(rank, world_size):
     """
-    Initiliaze the distributed process group (i.e. all of the processes that are running on the GPUs).
-    Typically each GPU runs one process. Setting up a group is necessary so that the processes
-    can communicate with one another.
     Args:
-        rank: Unique identifier of each process (ranges from 0 to world_size-1).
-        world_size: Total number of processes (total GPUs across all nodes).
+        rank: Unique identifier of each process
+        world_size: Total number of processes
     """
     torch.cuda.set_device(rank)
 
@@ -68,10 +65,10 @@ def main(rank: int, world_size: int, config: dict):
     dataloader = DataLoader(
         dataset,
         batch_size=loader_config["effective_batch_size"]//world_size,
-        num_workers=int(os.environ["SLURM_CPUS_PER_TASK"]),
+        num_workers=0, # This is needed to make processing faster 
         shuffle=False,
         sampler=DistributedSampler(dataset),
-        pin_memory=loader_config["pin_memory"],
+        pin_memory=True,
     )
     #####################################################################
     #####################################################################
@@ -170,7 +167,7 @@ if __name__ == "__main__":
     
     t0 = time.time()
 
-    mp.spawn(main, args=(world_size, config), nprocs=world_size) #NOTE: This is run per GPU
+    mp.spawn(main, args=(world_size, config), nprocs = world_size) #NOTE: This is run per GPU
 
     t1 = time.time()
     print(f"Time it took to run: {(t1-t0)/60} min")
