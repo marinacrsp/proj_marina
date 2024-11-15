@@ -20,7 +20,7 @@ class KCoordDataset(Dataset):
         n_volumes: int,
         n_slices: int = 3,
         with_mask: bool = True,
-        acceleration: int = 4,
+        acceleration: int = 2,
         center_frac: float = 0.15,
     ):
         self.metadata = {}
@@ -70,6 +70,7 @@ class KCoordDataset(Dataset):
             if with_mask:
                 kx_ids = torch.where(mask.squeeze())[0]
             else:
+                # kx_ids = torch.arange(width)
                 kx_ids = torch.from_numpy(np.setdiff1d(np.arange(width), np.arange(left_idx, right_idx))) # NOTE: Uncomment to include all the datapoints (fully-sampled volume), with the exception of the center region.
             ky_ids = torch.arange(height)
             kz_ids = torch.arange(n_slices)
@@ -90,7 +91,6 @@ class KCoordDataset(Dataset):
             # Used to determine the latent vector (one per volume).
             vol_ids = torch.tensor([vol_id] * len(kspace_coords)).unsqueeze(1)
 
-            # Appended volume index
             self.inputs.append(torch.cat((vol_ids, kspace_coords), dim=1))
 
             ##################################################

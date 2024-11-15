@@ -16,7 +16,7 @@ dataset:
   center_frac: 0.15
 
 dataloader:
-  effective_batch_size: 960_000
+  effective_batch_size: 720_000
 
 model:
   id: Siren
@@ -24,9 +24,10 @@ model:
     coord_dim: 4
     embedding_dim: 512
     hidden_dim: 512
-    L: 10
-    n_layers: 8
-    # dropout_rate: 0.1
+    levels: 5
+    n_min: 45
+    size_hashtable: 12
+    n_layers: 6
 
 loss:
   id: MSEL2

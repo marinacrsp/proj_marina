@@ -10,21 +10,33 @@ import torch
 from data_utils import *
 from fastmri.data.transforms import tensor_to_complex_np
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
+from torch.nn.parallel import DistributedDataParallel as DDP
+import torch.distributed as dist
 from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 
 
 class Trainer:
     def __init__(
-        self, dataloader, embeddings, model, loss_fn, optimizer, scheduler, config
+        self,
+        dataloader,
+        embeddings,
+        model,
+        loss_fn,
+        optimizer,
+        scheduler,
+        device,
+        config,
     ) -> None:
-        self.device = torch.device(config["device"])
+        self.device = device
         self.n_epochs = config["n_epochs"]
 
         self.dataloader = dataloader
-
         self.embeddings = embeddings.to(self.device)
+        self.embeddings = DDP(embeddings, device_ids=[self.device])
+
         self.model = model.to(self.device)
+        self.model = DDP(self.model, device_ids=[self.device])
 
         # If stateful loss function, move its "parameters" to `device`.
         if hasattr(loss_fn, "to"):
@@ -34,34 +46,43 @@ class Trainer:
         self.optimizer = optimizer
         self.scheduler = scheduler
 
-        self.log_interval = config["log_interval"]
-        self.checkpoint_interval = config["checkpoint_interval"]
-        self.path_to_out = Path(config["path_to_outputs"])
-        self.timestamp = config["timestamp"]
-        self.writer = SummaryWriter(self.path_to_out / self.timestamp)
+        # Only one process does the logging (to avoid redundancy).
+        if self.device == 0:
+            self.log_interval = config["log_interval"]
+            self.checkpoint_interval = config["checkpoint_interval"]
+            self.path_to_out = Path(config["path_to_outputs"])
+            self.timestamp = config["timestamp"]
+            self.writer = SummaryWriter(self.path_to_out / self.timestamp)
 
-        # Ground truth (used to compute the evaluation metrics).
-        self.ground_truth = []
-        for vol_id in self.dataloader.dataset.metadata.keys():
-            file = self.dataloader.dataset.metadata[vol_id]["file"]
-            with h5py.File(file, "r") as hf:
-                self.ground_truth.append(
-                    hf["reconstruction_rss"][()][: config["dataset"]["n_slices"]]
-                )
+            # Ground truth (used to compute the evaluation metrics).
+            self.ground_truth = []
+            for vol_id in self.dataloader.dataset.metadata.keys():
+                file = self.dataloader.dataset.metadata[vol_id]["file"]
+                with h5py.File(file, "r") as hf:
+                    self.ground_truth.append(
+                        hf["reconstruction_rss"][()][: config["dataset"]["n_slices"]]
+                    )
 
-        # Scientific and nuissance hyperparameters.
-        self.hparam_info = config["hparam_info"]
-        self.hparam_info["loss"] = config["loss"]["id"]
-        self.hparam_info["acceleration"] = config["dataset"]["acceleration"]
-        self.hparam_info["center_frac"] = config["dataset"]["center_frac"]
-        self.hparam_info["embedding_dim"] = self.embeddings.embedding_dim
-        self.hparam_info["sigma"] = config["loss"]["params"]["sigma"]
-        self.hparam_info["gamma"] = config["loss"]["params"]["gamma"]
+            # Scientific and nuissance hyperparameters.
+            self.hparam_info = config["hparam_info"]
+            self.hparam_info["learning_rate"] = self.scheduler.get_last_lr()[0]
+            self.hparam_info["loss"] = config["loss"]["id"]
+            self.hparam_info["acceleration"] = config["dataset"]["acceleration"]
+            self.hparam_info["center_frac"] = config["dataset"]["center_frac"]
+            self.hparam_info["embedding_dim"] = self.embeddings.module.embedding_dim
+            self.hparam_info["sigma"] = config["loss"]["params"]["sigma"]
+            self.hparam_info["gamma"] = config["loss"]["params"]["gamma"]
 
-        # Evaluation metrics for the last log.
-        self.last_nmse = [0] * len(self.dataloader.dataset.metadata)
-        self.last_psnr = [0] * len(self.dataloader.dataset.metadata)
-        self.last_ssim = [0] * len(self.dataloader.dataset.metadata)
+            # Evaluation metrics for the last log.
+            self.last_nmse = [0] * len(
+                self.dataloader.dataset.metadata
+            )  # Used during the last log.
+            self.last_psnr = [0] * len(
+                self.dataloader.dataset.metadata
+            )  # Used during the last log.
+            self.last_ssim = [0] * len(
+                self.dataloader.dataset.metadata
+            )  # Used during the last log.
 
     ###########################################################################
     ###########################################################################
@@ -71,41 +92,59 @@ class Trainer:
         """Train the model across multiple epochs and log the performance."""
         empirical_risk = 0
         for epoch_idx in range(self.n_epochs):
-            empirical_risk = self._train_one_epoch()
+            # In distributed mode, calling the set_epoch() method before creating the DataLoader iterator is necessary to make shuffling work properly.
+            # Otherwise, the same ordering will be always used.
+            self.dataloader.sampler.set_epoch(epoch_idx)
+            
+            empirical_risk = self._run_epoch(epoch_idx)
 
-            print(f"EPOCH {epoch_idx}    avg loss: {empirical_risk}\n")
-            self.writer.add_scalar("Loss/train", empirical_risk, epoch_idx)
-            # TODO: UNCOMMENT WHEN USING LR SCHEDULER.
-            # self.writer.add_scalar("Learning Rate", self.scheduler.get_last_lr()[0], epoch_idx)
+            if self.device == 0:
+                print(f"EPOCH {epoch_idx}    avg loss: {empirical_risk}\n")
+                self.writer.add_scalar("Loss/train", empirical_risk, epoch_idx)
+                # TODO: UNCOMMENT WHEN USING LR SCHEDULER.
+                # self.writer.add_scalar("Learning Rate", self.scheduler.get_last_lr()[0], epoch_idx)
 
-            if (epoch_idx + 1) % self.log_interval == 0:
-                self._log_performance(epoch_idx)
-                self._log_weight_info(epoch_idx)
+                if (epoch_idx + 1) % self.log_interval == 0:
+                    self._log_performance(epoch_idx)
+                    self._log_weight_info(epoch_idx)
 
-            if (epoch_idx + 1) % self.checkpoint_interval == 0:
-                # Takes ~3 seconds.
-                self._save_checkpoint(epoch_idx)
+                if (epoch_idx + 1) % self.checkpoint_interval == 0:
+                    # Takes ~3 seconds.
+                    self._save_checkpoint(epoch_idx)
 
-        self._log_information(empirical_risk)
-        self.writer.close()
+        if self.device == 0:
+            self._log_information(empirical_risk)
+            self.writer.close()
 
-    def _train_one_epoch(self):
+    def _run_epoch(self, epoch_idx):
         # Also known as "empirical risk".
         avg_loss = 0.0
         n_obs = 0
 
         self.model.train()
-        for inputs, targets in self.dataloader:
+        for batch_idx, (inputs, targets) in enumerate(self.dataloader):
             inputs, targets = inputs.to(self.device), targets.to(self.device)
-            
-            # Inputs has dimension Nm x 5, position 0 corresponds to volID
             coords, latent_embeddings = inputs[:, 1:], self.embeddings(
                 inputs[:, 0].long()
             )
-
+            
             self.optimizer.zero_grad(set_to_none=True)
-    
+            
+            # Print batch_size, memory usage
+            rank = dist.get_rank() if dist.is_initialized() else 0  # Rank of the current GPU
+            batch_size = inputs.size(0)  # Batch size on this GPU
+            # Memory usage in MB
+            memory_allocated = torch.cuda.memory_allocated(self.device) / (1024 ** 2)
+            memory_reserved = torch.cuda.memory_reserved(self.device) / (1024 ** 2)
+
+            # Log batch size and memory usage
+            print(f"Epoch {epoch_idx}, Batch {batch_idx} - Rank {rank}, GPU {self.device}: "
+                f"Batch size: {batch_size}, Memory allocated: {memory_allocated} MB, "
+                f"Memory reserved: {memory_reserved} MB")            
+            
+            
             outputs = self.model(coords, latent_embeddings)
+            
             # Can be thought as a moving average (with "stride" `batch_size`) of the loss.
             batch_loss = self.loss_fn(outputs, targets, latent_embeddings)
 
@@ -157,13 +196,12 @@ class Trainer:
             coords = torch.zeros_like(
                 point_ids, dtype=torch.float32, device=self.device
             )
-
             # Normalize the necessary coordinates for hash encoding to work
             coords[:, :2] = point_ids[:, :2]
             coords[:, 2] = (2 * point_ids[:, 2]) / (n_slices - 1) - 1
             coords[:, 3] = (2 * point_ids[:, 3]) / (n_coils - 1) - 1
 
-            # Need to add `:len(coords)` because the last batch has a different size (less than 60_000).
+            # Need to add `:len(coords)` because the last batch has a different size (than 60_000).
             outputs = self.model(coords, vol_embeddings[: len(coords)])
             # "Fill in" the unsampled region.
             volume_kspace[
@@ -192,6 +230,7 @@ class Trainer:
     @torch.no_grad()
     def _log_performance(self, epoch_idx):
         for vol_id in self.dataloader.dataset.metadata.keys():
+
             # Predict volume image.
             shape = self.dataloader.dataset.metadata[vol_id]["shape"]
             center_data = self.dataloader.dataset.metadata[vol_id]["center"]
@@ -261,14 +300,14 @@ class Trainer:
                 plt.close(fig)
 
             # Log evaluation metrics.
-            nmse_val = nmse(self.ground_truth[vol_id], volume_img)
-            self.writer.add_scalar(f"eval/vol_{vol_id}/nmse", nmse_val, epoch_idx)
+            ssim_val = ssim(self.ground_truth[vol_id], volume_img)
+            self.writer.add_scalar(f"eval/vol_{vol_id}/ssim", ssim_val, epoch_idx)
 
             psnr_val = psnr(self.ground_truth[vol_id], volume_img)
             self.writer.add_scalar(f"eval/vol_{vol_id}/psnr", psnr_val, epoch_idx)
 
-            ssim_val = ssim(self.ground_truth[vol_id], volume_img)
-            self.writer.add_scalar(f"eval/vol_{vol_id}/ssim", ssim_val, epoch_idx)
+            nmse_val = nmse(self.ground_truth[vol_id], volume_img)
+            self.writer.add_scalar(f"eval/vol_{vol_id}/nmse", nmse_val, epoch_idx)
 
             # Update.
             self.last_nmse[vol_id] = nmse_val
@@ -387,7 +426,7 @@ class Trainer:
     def _log_weight_info(self, epoch_idx):
         """Log weight values and gradients."""
         for module, case in zip(
-            [self.model, self.embeddings], ["network", "embeddings"]
+            [self.model.module, self.embeddings.module], ["network", "embeddings"]
         ):
             for name, param in module.named_parameters():
                 subplot_count = 1 if param.data is None else 2
@@ -411,6 +450,7 @@ class Trainer:
                 plt.close(fig)
 
     @torch.no_grad()
+    # Save current model gradients (model is wraped in DDP so .module is needed)
     def _save_checkpoint(self, epoch_idx):
         """Save current state of the training process."""
         # Ensure the path exists.
@@ -421,8 +461,8 @@ class Trainer:
 
         # Prepare state to save.
         save_dict = {
-            "model_state_dict": self.model.state_dict(),
-            "embedding_state_dict": self.embeddings.state_dict(),
+            "model_state_dict": self.model.module.state_dict(),
+            "embedding_state_dict": self.embeddings.module.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scheduler_state_dict": self.scheduler.state_dict(),
         }
@@ -433,14 +473,16 @@ class Trainer:
     def _log_information(self, loss):
         """Log 'scientific' and 'nuissance' hyperparameters."""
 
-        if hasattr(self.model, "activation"):
-            self.hparam_info["hidden_activation"] = type(self.model.activation).__name__
-        elif type(self.model).__name__ == "Siren":
+        if hasattr(self.model.module, "activation"):
+            self.hparam_info["hidden_activation"] = type(
+                self.model.module.activation
+            ).__name__
+        elif type(self.model.module).__name__ == "Siren":
             self.hparam_info["hidden_activation"] = "Sine"
 
-        if hasattr(self.model, "out_activation"):
+        if hasattr(self.model.module, "out_activation"):
             self.hparam_info["output_activation"] = type(
-                self.model.out_activation
+                self.model.module.out_activation
             ).__name__
         else:
             self.hparam_info["output_activation"] = "None"
@@ -487,7 +529,7 @@ class DMAELoss:
 class MSELoss:
     """Mean Squared Error Loss Function."""
 
-    def __init__(self, gamma):
+    def __init__(self, gamma=1.0):
         self.gamma = gamma
 
     def __call__(self, predictions, targets):
