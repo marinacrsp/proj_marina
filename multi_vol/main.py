@@ -81,6 +81,7 @@ def main():
         print("Checkpoint loaded successfully.")
 
         # Only embeddings are optimized.
+        # Freeze the model parameters
         for param in model.parameters():
             param.requires_grad = False
 

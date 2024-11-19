@@ -33,7 +33,8 @@ class KCoordDataset(Dataset):
                 [
                     file
                     for file in path_to_data.iterdir()
-                    if file.suffix == ".h5" and "AXT1POST_205" in file.name
+                    # if file.suffix == ".h5" and "AXT1POST_205" in file.name
+                    if file.suffix == ".h5" and "AXT2_205" in file.name
                 ]
             )[:n_volumes]
         else:

@@ -28,6 +28,7 @@ class KCoordDataset(Dataset):
         self.targets = []
 
         path_to_data = Path(path_to_data)
+        
         if path_to_data.is_dir():
             files = sorted(
                 [

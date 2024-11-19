@@ -3,26 +3,26 @@ seed: 7
 runtype: train
 # runtype: test
 
-path_to_outputs: /scratch_net/ken/mcrespo/proj_marina/logs/multigpu
+path_to_outputs: /scratch_net/ken/mcrespo/proj_marina/logs/multivol
 
-# model_checkpoint: /scratch_net/ken/mcrespo/proj_marina/logs/multivol/epoch_1999.pt  # TODO: SET (OR LEAVE COMMENTED).
+# model_checkpoint: /scratch_net/ken/mcrespo/proj_marina/logs/multivol/2024-11-15_15h30m00s/checkpoints/epoch_0499.pt  # TODO: SET (OR LEAVE COMMENTED).
 
 dataset:
   path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/
-  n_volumes: 10
+  n_volumes: 25
   n_slices: 2
   with_mask: False  # NOTE: During inference phase, set to True.
   acceleration: 4
   center_frac: 0.15
 
 dataloader:
-  effective_batch_size: 720_000
+  effective_batch_size: 960_000
 
 model:
   id: Siren
   params:
     coord_dim: 4
-    embedding_dim: 512
+    embedding_dim: 256
     hidden_dim: 512
     levels: 5
     n_min: 45

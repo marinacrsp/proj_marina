@@ -3,12 +3,12 @@ seed: 7
 # runtype: train
 runtype: test
 
-path_to_outputs: /scratch_net/ken/mcrespo/proj_marina/logs/multivol
+path_to_outputs: /scratch_net/ken/mcrespo/proj_marina/logs/multivol_inf
 
-model_checkpoint: /scratch_net/ken/mcrespo/proj_marina/logs/multivol/2024-11-13_12h31m52s/checkpoints/epoch_0999.pt  # TODO: SET (OR LEAVE COMMENTED).
+model_checkpoint: /scratch_net/ken/mcrespo/proj_marina/logs/multivol/2024-11-15_15h30m00s/checkpoints/epoch_0999.pt
 
 dataset:
-  path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/
+  path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_val/
   n_volumes: 3
   n_slices: 2
   with_mask: True  # NOTE: During training phase, set to False.
@@ -16,14 +16,14 @@ dataset:
   center_frac: 0.15
 
 dataloader:
-  batch_size: 120_000
+  batch_size: 240_000
   pin_memory: False
 
 model:
   id: Siren
   params:
     coord_dim: 4
-    embedding_dim: 512
+    embedding_dim: 256
     hidden_dim: 512
     levels: 5
     n_min: 45
@@ -33,7 +33,7 @@ model:
 loss:
   id: MSEL2
   params:
-    gamma: 0.1
+    gamma: 0.0
     sigma: 0.01
 
 optimizer:

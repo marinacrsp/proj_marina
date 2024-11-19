@@ -254,6 +254,7 @@ class Trainer:
                 # Plot image.
                 fig = plt.figure(figsize=(8, 8))
                 plt.imshow(volume_img[slice_id])
+                
                 self.writer.add_figure(
                     f"prediction/vol_{vol_id}/slice_{slice_id}/volume_img",
                     fig,

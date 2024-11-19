@@ -130,19 +130,6 @@ class Trainer:
             
             self.optimizer.zero_grad(set_to_none=True)
             
-            # Print batch_size, memory usage
-            rank = dist.get_rank() if dist.is_initialized() else 0  # Rank of the current GPU
-            batch_size = inputs.size(0)  # Batch size on this GPU
-            # Memory usage in MB
-            memory_allocated = torch.cuda.memory_allocated(self.device) / (1024 ** 2)
-            memory_reserved = torch.cuda.memory_reserved(self.device) / (1024 ** 2)
-
-            # Log batch size and memory usage
-            print(f"Epoch {epoch_idx}, Batch {batch_idx} - Rank {rank}, GPU {self.device}: "
-                f"Batch size: {batch_size}, Memory allocated: {memory_allocated} MB, "
-                f"Memory reserved: {memory_reserved} MB")            
-            
-            
             outputs = self.model(coords, latent_embeddings)
             
             # Can be thought as a moving average (with "stride" `batch_size`) of the loss.
@@ -191,12 +178,12 @@ class Trainer:
             device=self.device,
             dtype=torch.float32,
         )
+        
         for point_ids in dataloader:
             point_ids = point_ids[0].to(self.device, dtype=torch.long)
             coords = torch.zeros_like(
                 point_ids, dtype=torch.float32, device=self.device
             )
-
             coords[:, 0] = (2 * point_ids[:, 0]) / (width - 1) - 1
             coords[:, 1] = (2 * point_ids[:, 1]) / (height - 1) - 1
             coords[:, 2] = (2 * point_ids[:, 2]) / (n_slices - 1) - 1
@@ -204,6 +191,7 @@ class Trainer:
 
             # Need to add `:len(coords)` because the last batch has a different size (than 60_000).
             outputs = self.model(coords, vol_embeddings[: len(coords)])
+            
             # "Fill in" the unsampled region.
             volume_kspace[
                 point_ids[:, 2], point_ids[:, 3], point_ids[:, 1], point_ids[:, 0]
@@ -503,8 +491,6 @@ class Trainer:
 ##################################################
 # Loss Functions
 ##################################################
-
-
 class MAELoss:
     """Mean Absolute Error Loss Function."""
 

@@ -3,12 +3,12 @@ seed: 7
 # runtype: train
 runtype: test
 
-path_to_outputs: /scratch_net/ken/mcrespo/proj_marina/logs/multivol
+path_to_outputs: /scratch_net/ken/mcrespo/proj_marina/logs/multivol_inf
 
-model_checkpoint: /scratch_net/ken/mcrespo/proj_marina/logs/multivol/2024-11-11_09h28m59s/checkpoints/epoch_0999.pt  # TODO: SET (OR LEAVE COMMENTED).
+model_checkpoint: /scratch_net/ken/mcrespo/proj_marina/logs/multivol/2024-11-11_09h28m59s/checkpoints/epoch_0999.pt 
 
 dataset:
-  path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/
+  path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_val/
   n_volumes: 3
   n_slices: 2
   with_mask: True  # NOTE: During training phase, set to False.
@@ -16,7 +16,7 @@ dataset:
   center_frac: 0.15
 
 dataloader:
-  batch_size: 120_000
+  batch_size: 240_000
   pin_memory: False
 
 model:
