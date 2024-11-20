@@ -148,7 +148,7 @@ class hash_encoder(nn.Module):
             
             
         xy_embeddings_all = torch.cat(xy_embedded_all, dim=1)
-        full_embedding = torch.cat((xy_embeddings_all, points[:,2:]), dim=1)
+        full_embedding = torch.cat((xy_embeddings_all, points[:,2].unsqueeze(-1)), dim=1)
         return full_embedding
     
     

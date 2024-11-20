@@ -14,16 +14,19 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 
 
+
 class Trainer:
     def __init__(
-        self, dataloader, embeddings, model, loss_fn, optimizer, scheduler, config
+        self, dataloader, embeddings_vol, embeddings_coil, embeddings_start_idx, model, loss_fn, optimizer, scheduler, config
     ) -> None:
         self.device = torch.device(config["device"])
         self.n_epochs = config["n_epochs"]
 
         self.dataloader = dataloader
 
-        self.embeddings = embeddings.to(self.device)
+        self.embeddings_vol = embeddings_vol.to(self.device)
+        self.embeddings_coil = embeddings_coil.to(self.device)
+        self.start_idx = embeddings_start_idx.to(self.device)
         self.model = model.to(self.device)
 
         # If stateful loss function, move its "parameters" to `device`.
@@ -54,7 +57,7 @@ class Trainer:
         self.hparam_info["loss"] = config["loss"]["id"]
         self.hparam_info["acceleration"] = config["dataset"]["acceleration"]
         self.hparam_info["center_frac"] = config["dataset"]["center_frac"]
-        self.hparam_info["embedding_dim"] = self.embeddings.embedding_dim
+        # self.hparam_info["embedding_dim"] = self.embeddings.embedding_dim
         self.hparam_info["sigma"] = config["loss"]["params"]["sigma"]
         self.hparam_info["gamma"] = config["loss"]["params"]["gamma"]
 
@@ -95,19 +98,23 @@ class Trainer:
         n_obs = 0
 
         self.model.train()
-        for inputs, targets in self.dataloader:
+        for batch_idx, (inputs, targets) in enumerate(self.dataloader):
             inputs, targets = inputs.to(self.device), targets.to(self.device)
             
-            # Inputs has dimension Nm x 5, position 0 corresponds to volID
-            coords, latent_embeddings = inputs[:, 1:], self.embeddings(
-                inputs[:, 0].long()
-            )
-
+            # Get the index for the coil latent embedding
+            coords = inputs[:, 1:]
+            vol_ids = inputs[:,0].long()
+            coil_ids = inputs[:,-1].long() 
+            
+            latent_vol = self.embeddings_vol(vol_ids)
+            latent_coil = self.embeddings_coil(self.start_idx[vol_ids] + coil_ids)
+            
             self.optimizer.zero_grad(set_to_none=True)
     
-            outputs = self.model(coords, latent_embeddings)
+            outputs = self.model(coords, latent_vol, latent_coil)
+            
             # Can be thought as a moving average (with "stride" `batch_size`) of the loss.
-            batch_loss = self.loss_fn(outputs, targets, latent_embeddings)
+            batch_loss = self.loss_fn(outputs, targets, latent_vol)
 
             batch_loss.backward()
             self.optimizer.step()
@@ -143,7 +150,7 @@ class Trainer:
         dataloader = DataLoader(
             dataset, batch_size=60_000, shuffle=False, num_workers=3
         )
-        vol_embeddings = self.embeddings(
+        vol_embeddings = self.embeddings_vol(
             torch.tensor([vol_id] * 60_000, dtype=torch.long, device=self.device)
         )
 
@@ -157,14 +164,15 @@ class Trainer:
             coords = torch.zeros_like(
                 point_ids, dtype=torch.float32, device=self.device
             )
-
             # Normalize the necessary coordinates for hash encoding to work
             coords[:, :2] = point_ids[:, :2]
             coords[:, 2] = (2 * point_ids[:, 2]) / (n_slices - 1) - 1
-            coords[:, 3] = (2 * point_ids[:, 3]) / (n_coils - 1) - 1
+            coords[:, 3] = point_ids[:, 3]
+            coil_embeddings = self.embeddings_coil(self.start_idx[vol_id] + coords[:,3])
 
-            # Need to add `:len(coords)` because the last batch has a different size (less than 60_000).
-            outputs = self.model(coords, vol_embeddings[: len(coords)])
+            # Need to add `:len(coords)` because the last batch has a different size (than 60_000).
+            outputs = self.model(coords, vol_embeddings[: len(coords)], coil_embeddings)
+            
             # "Fill in" the unsampled region.
             volume_kspace[
                 point_ids[:, 2], point_ids[:, 3], point_ids[:, 1], point_ids[:, 0]
@@ -181,13 +189,13 @@ class Trainer:
         volume_kspace[..., left_idx:right_idx] = center_vals
 
         volume_img = rss(inverse_fft2_shift(volume_kspace))
+        vol_c0 = np.abs(inverse_fft2_shift(volume_kspace)[:,0])
+        vol_c1 = np.abs(inverse_fft2_shift(volume_kspace)[:,1]) 
+        vol_c2 = np.abs(inverse_fft2_shift(volume_kspace)[:,2]) 
+        vol_c3 = np.abs(inverse_fft2_shift(volume_kspace)[:,3])
 
         self.model.train()
-        return volume_img
-
-    ###########################################################################
-    ###########################################################################
-    ###########################################################################
+        return volume_img, vol_c0, vol_c1, vol_c2, vol_c3
 
     @torch.no_grad()
     def _log_performance(self, epoch_idx):
@@ -201,10 +209,9 @@ class Trainer:
                 center_data["vals"],
             )
 
-            volume_img = self.predict(vol_id, shape, left_idx, right_idx, center_vals)
+            volume_img, vol_c0, vol_c1, vol_c2, vol_c3 = self.predict(vol_id, shape, left_idx, right_idx, center_vals)
 
             volume_kspace = fft2_shift(volume_img)  # To get "single-coil" k-space.
-            volume_kspace[..., left_idx:right_idx] = 0
 
             ##################################################
             # Log kspace values.
@@ -215,13 +222,6 @@ class Trainer:
 
             argument = np.angle(volume_kspace)
             cste_arg = np.pi / 180
-
-            # Plot real and imaginary parts.
-            real_part = np.real(volume_kspace)
-            cste_real = self.dataloader.dataset.metadata[vol_id]["plot_cste"]
-
-            imag_part = np.imag(volume_kspace)
-            cste_imag = cste_real
 
             ##################################################
             # Log image space values
@@ -237,19 +237,44 @@ class Trainer:
                     "Modulus",
                     "Argument",
                     epoch_idx,
-                    f"prediction/vol_{vol_id}/slice_{slice_id}/kspace_v1",
+                    f"prediction/vol_{vol_id}/slice_{slice_id}/kspace_v1")
+                    
+                # Plot rss image.
+                fig = plt.figure(figsize=(8, 8))
+                plt.imshow(volume_img[slice_id], cmap='gray')
+                self.writer.add_figure(
+                    f"prediction/vol_{vol_id}/slice_{slice_id}/volume_img",
+                    fig,
+                    global_step=epoch_idx,
                 )
-                self._plot_info(
-                    real_part[slice_id],
-                    imag_part[slice_id],
-                    cste_real,
-                    cste_imag,
-                    "Real part",
-                    "Imaginary part",
-                    epoch_idx,
-                    f"prediction/vol_{vol_id}/slice_{slice_id}/kspace_v2",
+                plt.close(fig)
+                
+                
+                # Plot 4 coils image
+                fig = plt.figure(figsize=(20, 10))
+                plt.subplot(1,4,1)
+                plt.imshow(vol_c0[slice_id], cmap='gray')
+                plt.axis('off')
+                
+                plt.subplot(1,4,2)
+                plt.imshow(vol_c1[slice_id], cmap='gray')
+                plt.axis('off')
+            
+                plt.subplot(1,4,3)
+                plt.imshow(vol_c2[slice_id], cmap='gray')
+                plt.axis('off')
+                
+                plt.subplot(1,4,4)
+                plt.imshow(vol_c3[slice_id], cmap='gray')
+                plt.axis('off')
+                
+                self.writer.add_figure(
+                    f"prediction/vol_{vol_id}/slice_{slice_id}/coils_img",
+                    fig,
+                    global_step=epoch_idx,
                 )
-
+                plt.close(fig)
+                
                 # Plot image.
                 fig = plt.figure(figsize=(8, 8))
                 plt.imshow(volume_img[slice_id])
@@ -281,7 +306,7 @@ class Trainer:
         fig = plt.figure(figsize=(20, 20))
 
         plt.subplot(2, 2, 1)
-        plt.imshow(data_1 / cste_1)
+        plt.imshow(np.log(data_1 / cste_1))
         plt.colorbar()
         plt.title(f"{title_1} kspace")
 
@@ -506,13 +531,13 @@ class MSEL2Loss:
         self.sigma_squared = sigma**2
         self.gamma = gamma
 
-    def __call__(self, predictions, targets, embeddings):
+    def __call__(self, predictions, targets, embeddings_vol):
         predictions = torch.view_as_complex(predictions)
         targets = torch.view_as_complex(targets)
 
         loss = ((predictions - targets).abs()) ** 2
 
-        reg = (embeddings**2).sum(axis=-1) / self.sigma_squared
+        reg = (embeddings_vol**2).sum(axis=-1) / self.sigma_squared
 
         return torch.mean(loss) + self.gamma * torch.mean(reg)
 

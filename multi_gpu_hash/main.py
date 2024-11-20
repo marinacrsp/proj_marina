@@ -30,7 +30,6 @@ def ddp_setup(rank, world_size):
 
 MODEL_CLASSES = {
     "Siren": Siren,
-    "Siren_v2": Siren_v2,
 }
 
 LOSS_CLASSES = {
@@ -73,13 +72,34 @@ def main(rank: int, world_size: int, config: dict):
     #####################################################################
     #####################################################################
     
-    
     model_params = config["model"]["params"]
-    embeddings = torch.nn.Embedding(
-        len(dataset.metadata), model_params["embedding_dim"]
+    #####################################################################
+    # volume embedding
+    #####################################################################
+    embeddings_vol = torch.nn.Embedding(
+        len(dataset.metadata), model_params["vol_embedding_dim"]
     )
     torch.nn.init.normal_(
-        embeddings.weight.data, 0.0, config["loss"]["params"]["sigma"]
+        embeddings_vol.weight.data, 0.0, config["loss"]["params"]["sigma"]
+    )
+
+    ###################################################################
+    # Coil embeddings
+    ########################################################
+    coil_sizes = []
+    for i in range(len(dataset.metadata)):
+        _, n_coils, _, _ = dataset.metadata[i]["shape"]
+        coil_sizes.append(n_coils)
+        
+    total_n_coils = torch.cumsum(torch.tensor(coil_sizes), dim=0)[-1]
+    
+    # Create the indexes to access the embedding coil table
+    start_idx = torch.tensor([0] + list(torch.cumsum(torch.tensor(coil_sizes), dim=0)[:-1]))
+
+    # Create the table of embeddings for the coils
+    embeddings_coil = torch.nn.Embedding(total_n_coils.item(), model_params["coil_embedding_dim"])
+    torch.nn.init.normal_(
+        embeddings_coil.weight.data, 0.0, config["loss"]["params"]["sigma"]
     )
 
     model = MODEL_CLASSES[config["model"]["id"]](**model_params)
@@ -99,7 +119,7 @@ def main(rank: int, world_size: int, config: dict):
             param.requires_grad = False
 
         optimizer = OPTIMIZER_CLASSES[config["optimizer"]["id"]](
-            embeddings.parameters(), **config["optimizer"]["params"]
+            chain(embeddings_vol.parameters(), embeddings_coil.parameters()), **config["optimizer"]["params"]
         )
 
     elif config["runtype"] == "train":
@@ -112,7 +132,7 @@ def main(rank: int, world_size: int, config: dict):
             print(f"GPU{rank}] Checkpoint loaded successfully.")
 
         optimizer = OPTIMIZER_CLASSES[config["optimizer"]["id"]](
-            chain(embeddings.parameters(), model.parameters()),
+            chain(embeddings_vol.parameters(), embeddings_coil.parameters(), model.parameters()),
             **config["optimizer"]["params"],
         )
 
@@ -137,7 +157,9 @@ def main(rank: int, world_size: int, config: dict):
 
     trainer = Trainer(
         dataloader=dataloader,
-        embeddings=embeddings,
+        embeddings_vol=embeddings_vol,
+        embeddings_coil=embeddings_coil,
+        embeddings_coil_idx = start_idx,
         model=model,
         loss_fn=loss_fn,
         optimizer=optimizer,

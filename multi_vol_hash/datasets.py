@@ -33,8 +33,9 @@ class KCoordDataset(Dataset):
                 [
                     file
                     for file in path_to_data.iterdir()
-                    # if file.suffix == ".h5" and "AXT1POST_205" in file.name
-                    if file.suffix == ".h5" and "AXT2_205" in file.name
+                    if file.suffix == ".h5" and "AXT1POST_205" in file.name
+                    # if file.suffix == ".h5" and "AXT2_205" in file.name # T2 sequence
+                    
                 ]
             )[:n_volumes]
         else:
@@ -86,7 +87,8 @@ class KCoordDataset(Dataset):
             kspace_coords = torch.zeros((kspace_ids.shape[0], 4), dtype=torch.float)
             kspace_coords[:, :2] = kspace_ids[:, :2]
             kspace_coords[:, 2] = (2 * kspace_ids[:, 2]) / (n_slices - 1) - 1
-            kspace_coords[:, 3] = (2 * kspace_ids[:, 3]) / (n_coils - 1) - 1
+            kspace_coords[:, 3] = kspace_ids[:, 3]
+            # kspace_coords[:, 3] = (2 * kspace_ids[:, 3]) / (n_coils - 1) - 1
 
             # Used to determine the latent vector (one per volume).
             vol_ids = torch.tensor([vol_id] * len(kspace_coords)).unsqueeze(1)
