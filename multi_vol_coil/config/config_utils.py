@@ -38,7 +38,7 @@ def parse_args() -> argparse.Namespace:
         "--config",
         type=str,
         help="Path to configuration file.",
-        default="./multi_vol/config/config.yaml",
+        default="./multi_vol_coil/config/config.yaml",
     )
 
     device = "cuda" if cuda.is_available() else "cpu"

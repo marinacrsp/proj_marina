@@ -132,7 +132,7 @@ class Trainer:
             inputs, targets = inputs.to(self.device), targets.to(self.device)
             
             # Get the index for the coil latent embedding
-            coords = inputs[:, 1:-1] # kx,ky, kz
+            coords = inputs[:, 1:-1] # kx,ky,kz
             vol_ids = inputs[:,0].long()
             coil_ids = inputs[:,-1].long() # unnormalized coilID
             

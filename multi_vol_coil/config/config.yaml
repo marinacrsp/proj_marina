@@ -1,17 +1,17 @@
 seed: 7
 
-# runtype: train
-runtype: test
+runtype: train
+# runtype: test
 
-path_to_outputs: /scratch_net/ken/mcrespo/proj_marina/logs/multivol_inf
+path_to_outputs: /scratch_net/ken/mcrespo/proj_marina/logs/multivol_singlegpu
 
-model_checkpoint: /scratch_net/ken/mcrespo/proj_marina/logs/multivol/2024-11-11_09h28m59s/checkpoints/epoch_0999.pt 
+# model_checkpoint: /scratch_net/ken/mcrespo/proj_marina/logs/multivol/2024-11-15_15h30m00s/checkpoints/epoch_0499.pt
 
 dataset:
   path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_val/
-  n_volumes: 3
+  n_volumes: 2
   n_slices: 2
-  with_mask: True  # NOTE: During training phase, set to False.
+  with_mask: False  # NOTE: During training phase, set to False.
   acceleration: 4
   center_frac: 0.15
 
@@ -22,17 +22,16 @@ dataloader:
 model:
   id: Siren
   params:
-    coord_dim: 4
-    embedding_dim: 512
+    coord_dim: 3
+    vol_embedding_dim: 256
+    coil_embedding_dim: 64
     hidden_dim: 512
     n_layers: 8
-    L: 10
-
 
 loss:
   id: MSEL2
   params:
-    gamma: 0.1
+    gamma: 0.0
     sigma: 0.01
 
 optimizer:
@@ -48,8 +47,8 @@ scheduler:
 
 # Training Process
 n_epochs: 1_000
-log_interval: 100
-checkpoint_interval: 500  # Keep in mind that each checkpoint takes ~241 MB of space.
+log_interval: 2
+checkpoint_interval: 1000  # Keep in mind that each checkpoint takes ~241 MB of space.
 
 
 ###################################################
