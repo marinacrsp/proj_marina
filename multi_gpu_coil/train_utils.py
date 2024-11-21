@@ -132,9 +132,9 @@ class Trainer:
             inputs, targets = inputs.to(self.device), targets.to(self.device)
             
             # Get the index for the coil latent embedding
-            coords = inputs[:, 1:]
+            coords = inputs[:, 1:-1] # kx,ky, kz
             vol_ids = inputs[:,0].long()
-            coil_ids = inputs[:,-1].long() 
+            coil_ids = inputs[:,-1].long() # unnormalized coilID
             
             latent_vol = self.embeddings_vol(vol_ids)
             latent_coil = self.embeddings_coil(self.start_idx[vol_ids] + coil_ids)
@@ -195,11 +195,12 @@ class Trainer:
                 point_ids, dtype=torch.float32, device=self.device
             )
             # Normalize the necessary coordinates for hash encoding to work
-            coords[:, :2] = point_ids[:, :2]
+            # coords[:, :2] = point_ids[:, :2]
+            coords[:, 0] = (2 * point_ids[:, 0]) / (width - 1) - 1
+            coords[:, 1] = (2 * point_ids[:, 1]) / (height - 1) - 1
             coords[:, 2] = (2 * point_ids[:, 2]) / (n_slices - 1) - 1
-            coords[:, 3] = point_ids[:, 3]
             
-            coil_embeddings = self.embeddings_coil(self.start_idx[vol_id] + coords[:,3].long())
+            coil_embeddings = self.embeddings_coil(self.start_idx[vol_id] + point_ids[:, 3].long())
 
             # Need to add `:len(coords)` because the last batch has a different size (than 60_000).
             outputs = self.model(coords, vol_embeddings[: len(coords)], coil_embeddings)

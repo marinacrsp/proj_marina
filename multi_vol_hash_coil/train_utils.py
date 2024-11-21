@@ -437,7 +437,8 @@ class Trainer:
         # Prepare state to save.
         save_dict = {
             "model_state_dict": self.model.state_dict(),
-            "embedding_state_dict": self.embeddings.state_dict(),
+            "embedding_vol_state_dict": self.embeddings_vol.state_dict(),
+            "embedding_coil_state_dict": self.embeddings_coil.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scheduler_state_dict": self.scheduler.state_dict(),
         }
