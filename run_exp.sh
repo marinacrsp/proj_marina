@@ -28,10 +28,9 @@ export WORLD_SIZE=$SLURM_GPUS_ON_NODE
 echo "MASTER_PORT=$MASTER_PORT"
 echo "WORLD_SIZE=$WORLD_SIZE"
 
-# python -u multi_vol/main.py
 # python -u multi_vol_hash/main.py
-# python -u multi_gpu/main.py
+# python -u multi_vol_hash_coil/main.py
 python -u multi_gpu_hash/main.py
+# python -u multi_gpu_hash_coil/main.py
 # python -u single_vol/main.py
 # python -u single_vol_hash/main.py
-# python -u single_vol_original/main.py

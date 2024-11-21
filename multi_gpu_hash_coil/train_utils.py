@@ -275,16 +275,6 @@ class Trainer:
                     "Argument",
                     epoch_idx,
                     f"prediction/vol_{vol_id}/slice_{slice_id}/kspace_v1")
-                    
-                # Plot rss image.
-                fig = plt.figure(figsize=(8, 8))
-                plt.imshow(volume_img[slice_id], cmap='gray')
-                self.writer.add_figure(
-                    f"prediction/vol_{vol_id}/slice_{slice_id}/volume_img",
-                    fig,
-                    global_step=epoch_idx,
-                )
-                plt.close(fig)
                 
                 
                 # Plot 4 coils image
@@ -314,7 +304,7 @@ class Trainer:
                 
                 # Plot image.
                 fig = plt.figure(figsize=(8, 8))
-                plt.imshow(volume_img[slice_id])
+                plt.imshow(volume_img[slice_id], cmap='gray')
                 self.writer.add_figure(
                     f"prediction/vol_{vol_id}/slice_{slice_id}/volume_img",
                     fig,

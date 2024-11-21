@@ -197,7 +197,7 @@ class Trainer:
         self.model.train()
         return volume_img, vol_c0, vol_c1, vol_c2, vol_c3
 
-    @torch.no_grad()
+    @torch.no_grad() 
     def _log_performance(self, epoch_idx):
         for vol_id in self.dataloader.dataset.metadata.keys():
             # Predict volume image.
@@ -239,16 +239,6 @@ class Trainer:
                     epoch_idx,
                     f"prediction/vol_{vol_id}/slice_{slice_id}/kspace_v1")
                     
-                # Plot rss image.
-                fig = plt.figure(figsize=(8, 8))
-                plt.imshow(volume_img[slice_id], cmap='gray')
-                self.writer.add_figure(
-                    f"prediction/vol_{vol_id}/slice_{slice_id}/volume_img",
-                    fig,
-                    global_step=epoch_idx,
-                )
-                plt.close(fig)
-                
                 
                 # Plot 4 coils image
                 fig = plt.figure(figsize=(20, 10))
@@ -277,7 +267,7 @@ class Trainer:
                 
                 # Plot image.
                 fig = plt.figure(figsize=(8, 8))
-                plt.imshow(volume_img[slice_id])
+                plt.imshow(volume_img[slice_id], cmap='gray')
                 self.writer.add_figure(
                     f"prediction/vol_{vol_id}/slice_{slice_id}/volume_img",
                     fig,
