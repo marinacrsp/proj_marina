@@ -1,39 +1,40 @@
 seed: 7
 
-# runtype: train
-runtype: test
+runtype: train
+# runtype: test
 
-path_to_outputs: /scratch_net/ken/mcrespo/proj_marina/logs/multivol_inf
+path_to_outputs: /scratch_net/ken/mcrespo/proj_marina/logs/multivol_11_20
 
-model_checkpoint: /scratch_net/ken/mcrespo/proj_marina/logs/multivol/2024-11-11_09h28m59s/checkpoints/epoch_0999.pt 
+# model_checkpoint: /scratch_net/ken/mcrespo/proj_marina/logs/multivol/2024-11-15_15h30m00s/checkpoints/epoch_0499.pt  # TODO: SET (OR LEAVE COMMENTED).
 
 dataset:
-  path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_val/
-  n_volumes: 3
+  path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/
+  n_volumes: 5
   n_slices: 2
-  with_mask: True  # NOTE: During training phase, set to False.
+  with_mask: False  # NOTE: During inference phase, set to True.
   acceleration: 4
   center_frac: 0.15
 
 dataloader:
-  batch_size: 240_000
-  pin_memory: False
+  effective_batch_size: 720_000
 
 model:
   id: Siren
   params:
     coord_dim: 4
-    embedding_dim: 512
+    vol_embedding_dim: 256
+    coil_embedding_dim: 64
     hidden_dim: 512
-    n_layers: 8
-    L: 10
-
+    levels: 5
+    n_min: 45
+    size_hashtable: 12
+    n_layers: 6
 
 loss:
   id: MSEL2
   params:
-    gamma: 0.1
-    sigma: 0.01
+    gamma: 0.0
+    sigma: 0.1
 
 optimizer:
   id: Adam
@@ -47,9 +48,9 @@ scheduler:
     step_size: 20_000
 
 # Training Process
-n_epochs: 1_000
+n_epochs: 1000
 log_interval: 100
-checkpoint_interval: 500  # Keep in mind that each checkpoint takes ~241 MB of space.
+checkpoint_interval: 1000  # Keep in mind that each checkpoint takes ~241 MB of space.
 
 
 ###################################################
@@ -62,16 +63,13 @@ hparam_info:
   # dataset: "undersampled (except center)"
   dataset: "all data (except center)"
 
-  # observation_type: "train sample"
-  observation_type: "test sample"
+  observation_type: "train sample"
+  # observation_type: "test sample"
 
   # regularization: "None"
   # regularization: "layer norm"
   # regularization: "weight norm"
   # regularization: "AdamW (weight decay)"
-
-  coord_encoding: "positional encoding"
-  # coord_encoding: "fourier_feat"
 
   # normalization: "None"
   normalization: "divide by .999 abs quantile"

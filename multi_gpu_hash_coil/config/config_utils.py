@@ -39,7 +39,7 @@ def parse_args() -> argparse.Namespace:
         "--config",
         type=str,
         help="Path to configuration file.",
-        default="./multi_gpu_hash/config/config.yaml",
+        default="./multi_gpu_hash_coil/config/config.yaml",
     )
 
     return parser.parse_args()

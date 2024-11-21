@@ -168,7 +168,7 @@ class Trainer:
             coords[:, :2] = point_ids[:, :2]
             coords[:, 2] = (2 * point_ids[:, 2]) / (n_slices - 1) - 1
             coords[:, 3] = point_ids[:, 3]
-            coil_embeddings = self.embeddings_coil(self.start_idx[vol_id] + coords[:,3])
+            coil_embeddings = self.embeddings_coil(self.start_idx[vol_id] + coords[:,3].long())
 
             # Need to add `:len(coords)` because the last batch has a different size (than 60_000).
             outputs = self.model(coords, vol_embeddings[: len(coords)], coil_embeddings)
@@ -412,7 +412,7 @@ class Trainer:
     def _log_weight_info(self, epoch_idx):
         """Log weight values and gradients."""
         for module, case in zip(
-            [self.model, self.embeddings], ["network", "embeddings"]
+            [self.model, self.embeddings_vol, self.embeddings_coil], ["network", "embeddings_vol", "embeddings_coil"]
         ):
             for name, param in module.named_parameters():
                 subplot_count = 1 if param.data is None else 2

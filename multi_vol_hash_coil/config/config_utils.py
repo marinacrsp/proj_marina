@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 import yaml
 from numpy.random import default_rng
-from torch import manual_seed
+from torch import cuda, manual_seed
 
 
 def load_config(file_path: str) -> Dict[str, Any]:
@@ -15,7 +15,6 @@ def load_config(file_path: str) -> Dict[str, Any]:
         config = yaml.safe_load(file)
 
     config["timestamp"] = datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
-    save_config(config)
     return config
 
 
@@ -39,8 +38,11 @@ def parse_args() -> argparse.Namespace:
         "--config",
         type=str,
         help="Path to configuration file.",
-        default="./multi_gpu/config/config.yaml",
+        default="./multi_vol_hash_coil/config/config.yaml",
     )
+
+    device = "cuda" if cuda.is_available() else "cpu"
+    parser.add_argument("-d", "--device", type=str, default=device)
 
     return parser.parse_args()
 

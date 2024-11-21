@@ -9,7 +9,7 @@
 source /scratch_net/ken/mcrespo/conda/etc/profile.d/conda.sh # TODO: SET.
 conda activate pytcu11
 
-# # Debugging: Check if SLURM_JOB_NODELIST is defined and populated
+# # # Debugging: Check if SLURM_JOB_NODELIST is defined and populated
 
 master_addr=$(echo $SLURM_JOB_NODELIST | sed 's/,.*//' | sed 's/\[.*\]//')
 export MASTER_ADDR=$master_addr
