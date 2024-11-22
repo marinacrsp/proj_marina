@@ -69,6 +69,7 @@ class Siren(nn.Module):
 
         # Concatenate embeddings and positional encodings.
         x = torch.cat([vol_embedding, coil_embedding, x], dim=-1)
+        
 
         for layer_idx, layer in enumerate(self.sine_layers):
             # Residual connection.

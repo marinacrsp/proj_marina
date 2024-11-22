@@ -103,6 +103,7 @@ class Trainer:
             
             # Get the index for the coil latent embedding
             coords = inputs[:, 1:-1]
+            
             vol_ids = inputs[:,0].long()
             coil_ids = inputs[:,-1].long() 
             
@@ -162,14 +163,14 @@ class Trainer:
         for point_ids in dataloader:
             point_ids = point_ids[0].to(self.device, dtype=torch.long)
             coords = torch.zeros_like(
-                point_ids, dtype=torch.float32, device=self.device
+                point_ids[:,:-1], dtype=torch.float32, device=self.device
             )
             # Normalize the necessary coordinates for hash encoding to work
             coords[:, 0] = (2 * point_ids[:, 0]) / (width - 1) - 1
             coords[:, 1] = (2 * point_ids[:, 1]) / (height - 1) - 1
             coords[:, 2] = (2 * point_ids[:, 2]) / (n_slices - 1) - 1
 
-            coil_embeddings = self.embeddings_coil(self.start_idx[vol_id] + point_ids[:, 3].long())
+            coil_embeddings = self.embeddings_coil(self.start_idx[vol_id] + point_ids[:, 3])
 
             # Need to add `:len(coords)` because the last batch has a different size (than 60_000).
             outputs = self.model(coords, vol_embeddings[: len(coords)], coil_embeddings)

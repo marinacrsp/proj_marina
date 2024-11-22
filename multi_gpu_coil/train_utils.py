@@ -192,16 +192,16 @@ class Trainer:
         for point_ids in dataloader:
             point_ids = point_ids[0].to(self.device, dtype=torch.long)
             coords = torch.zeros_like(
-                point_ids, dtype=torch.float32, device=self.device
+                point_ids[:,:-1], dtype=torch.float32, device=self.device
             )
             # Normalize the necessary coordinates for hash encoding to work
-            # coords[:, :2] = point_ids[:, :2]
             coords[:, 0] = (2 * point_ids[:, 0]) / (width - 1) - 1
             coords[:, 1] = (2 * point_ids[:, 1]) / (height - 1) - 1
             coords[:, 2] = (2 * point_ids[:, 2]) / (n_slices - 1) - 1
-            
-            coil_embeddings = self.embeddings_coil(self.start_idx[vol_id] + point_ids[:, 3].long())
 
+            coil_embeddings = self.embeddings_coil(self.start_idx[vol_id] + point_ids[:, 3])
+
+            print(coords.shape)
             # Need to add `:len(coords)` because the last batch has a different size (than 60_000).
             outputs = self.model(coords, vol_embeddings[: len(coords)], coil_embeddings)
             
@@ -440,7 +440,7 @@ class Trainer:
     def _log_weight_info(self, epoch_idx):
         """Log weight values and gradients."""
         for module, case in zip(
-            [self.model.module, self.embeddings_vol.module, self.embeddings_coil.module], ["network", "embeddings"]
+            [self.model.module, self.embeddings_vol.module, self.embeddings_coil.module], ["network", "embeddings_vol", "embeddings_coil"]
         ):
             for name, param in module.named_parameters():
                 subplot_count = 1 if param.data is None else 2

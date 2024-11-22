@@ -72,7 +72,9 @@ class KCoordDataset(Dataset):
             if with_mask:
                 kx_ids = torch.where(mask.squeeze())[0]
             else:
+                # kx_ids = torch.arange(width)
                 kx_ids = torch.from_numpy(np.setdiff1d(np.arange(width), np.arange(left_idx, right_idx))) # NOTE: Uncomment to include all the datapoints (fully-sampled volume), with the exception of the center region.
+
             ky_ids = torch.arange(height)
             kz_ids = torch.arange(n_slices)
             coil_ids = torch.arange(n_coils)
