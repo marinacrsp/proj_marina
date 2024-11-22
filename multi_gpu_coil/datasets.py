@@ -60,7 +60,7 @@ class KCoordDataset(Dataset):
                 shape, None, vol_id
             )  # use the volume index as random seed.
 
-            mask, left_idx, right_idx = remove_center(mask)
+            mask, left_idx, right_idx = remove_center(mask) # NOTE: Uncomment to remove the center region !!!!!
             # _, left_idx, right_idx = remove_center(mask)  # NOTE: Uncomment to include the center region in the training data. Note that 'left_idx' and 'right_idx' are still needed.
 
             ##################################################
