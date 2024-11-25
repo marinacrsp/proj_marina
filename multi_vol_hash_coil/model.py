@@ -16,6 +16,7 @@ class Siren(nn.Module):
         coil_embedding_dim = 64,
         hidden_dim=512,
         n_layers=4,
+        n_features=3,
         out_dim=2,
         omega_0=30,
         dropout_rate=0.20,
@@ -24,8 +25,8 @@ class Siren(nn.Module):
         
         self.n_flayer = n_layers // 2
         self.n_slayer = n_layers - self.n_flayer
-        self.embed_fn = hash_encoder(levels=levels, log2_hashmap_size=size_hashtable, n_features_per_level=2, n_max=320, n_min=n_min)
-        coord_encoding_dim = levels*2 + 1 # NOTE: We need to append the kz and coilID coordinates 
+        self.embed_fn = hash_encoder(levels=levels, log2_hashmap_size=size_hashtable, n_features_per_level=n_features, n_max=320, n_min=n_min)
+        coord_encoding_dim = levels*n_features + coord_dim-2 # NOTE: We need to append the kz and coilID coordinates 
 
         self.sine_layers = [
             SineLayer(

@@ -9,23 +9,24 @@ path_to_outputs: /scratch_net/ken/mcrespo/proj_marina/logs/multivol_11_20
 
 dataset:
   path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/
-  n_volumes: 5
+  n_volumes: 15
   n_slices: 2
   with_mask: False  # NOTE: During inference phase, set to True.
   acceleration: 4
   center_frac: 0.15
 
 dataloader:
-  effective_batch_size: 720_000
+  effective_batch_size: 1_200_000
 
 model:
   id: Siren
   params:
-    coord_dim: 4
+    coord_dim: 3
     vol_embedding_dim: 256
-    coil_embedding_dim: 64
+    coil_embedding_dim: 128
     hidden_dim: 512
     levels: 5
+    n_features: 2
     n_min: 45
     size_hashtable: 12
     n_layers: 6
@@ -48,9 +49,9 @@ scheduler:
     step_size: 20_000
 
 # Training Process
-n_epochs: 1000
+n_epochs: 500
 log_interval: 100
-checkpoint_interval: 1000  # Keep in mind that each checkpoint takes ~241 MB of space.
+checkpoint_interval: 500  # Keep in mind that each checkpoint takes ~241 MB of space.
 
 
 ###################################################

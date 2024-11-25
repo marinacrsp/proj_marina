@@ -7,13 +7,14 @@ from torch import nn
 class Siren(nn.Module):
     def __init__(
         self,
-        coord_dim=4,
+        coord_dim=3,
         levels = 10,
         n_min = 16,
         size_hashtable = 12,
         vol_embedding_dim=256,
         coil_embedding_dim = 64,
         hidden_dim=512,
+        n_features = 2,
         n_layers=4,
         out_dim=2,
         omega_0=30,
@@ -23,9 +24,9 @@ class Siren(nn.Module):
         
         self.n_flayer = n_layers // 2
         self.n_slayer = n_layers - self.n_flayer
-        self.embed_fn = hash_encoder(levels=levels, log2_hashmap_size=size_hashtable, n_features_per_level=2, n_max=320, n_min=n_min)
-        coord_encoding_dim = levels*2 + 1 # NOTE: We need to append the kz and coilID coordinates 
-
+        self.embed_fn = hash_encoder(levels=levels, log2_hashmap_size=size_hashtable, n_features_per_level=n_features, n_max=320, n_min=n_min)
+        coord_encoding_dim = levels*n_features + coord_dim-2 # NOTE: kx and ky provide an embedding on their own, remaining coordinates (kz, coilID need to be appended)
+        
         self.sine_layers = [
             SineLayer(
                 coord_encoding_dim + vol_embedding_dim + coil_embedding_dim,
@@ -103,10 +104,5 @@ class SineLayer(nn.Module):
                 )
 
     def forward(self, x):
-        # NOTE: Uncomment when using batch (or layer) normalization.
-        # x = self.linear(x)
-        # x = self.layer_norm(x)
-        # x = self.batch_norm(x)
-        # return torch.sin(self.omega_0 * x)
 
         return torch.sin(self.omega_0 * self.linear(x))

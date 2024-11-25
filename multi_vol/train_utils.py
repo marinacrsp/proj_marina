@@ -183,9 +183,13 @@ class Trainer:
 
         volume_img = rss(inverse_fft2_shift(volume_kspace))
 
-        self.model.train()
-        return volume_img
+        vol_c0 = np.abs(inverse_fft2_shift(volume_kspace)[:,0])
+        vol_c1 = np.abs(inverse_fft2_shift(volume_kspace)[:,1]) 
+        vol_c2 = np.abs(inverse_fft2_shift(volume_kspace)[:,2]) 
+        vol_c3 = np.abs(inverse_fft2_shift(volume_kspace)[:,3])
 
+        self.model.train()
+        return volume_img, vol_c0, vol_c1, vol_c2, vol_c3
     ###########################################################################
     ###########################################################################
     ###########################################################################
@@ -202,10 +206,10 @@ class Trainer:
                 center_data["vals"],
             )
 
-            volume_img = self.predict(vol_id, shape, left_idx, right_idx, center_vals)
+            volume_img, vol_c0, vol_c1, vol_c2, vol_c3 = self.predict(vol_id, shape, left_idx, right_idx, center_vals)
 
             volume_kspace = fft2_shift(volume_img)  # To get "single-coil" k-space.
-            volume_kspace[..., left_idx:right_idx] = 0
+            # volume_kspace[..., left_idx:right_idx] = 0
 
             ##################################################
             # Log kspace values.
@@ -217,12 +221,6 @@ class Trainer:
             argument = np.angle(volume_kspace)
             cste_arg = np.pi / 180
 
-            # Plot real and imaginary parts.
-            real_part = np.real(volume_kspace)
-            cste_real = self.dataloader.dataset.metadata[vol_id]["plot_cste"]
-
-            imag_part = np.imag(volume_kspace)
-            cste_imag = cste_real
 
             ##################################################
             # Log image space values
@@ -240,21 +238,35 @@ class Trainer:
                     epoch_idx,
                     f"prediction/vol_{vol_id}/slice_{slice_id}/kspace_v1",
                 )
-                self._plot_info(
-                    real_part[slice_id],
-                    imag_part[slice_id],
-                    cste_real,
-                    cste_imag,
-                    "Real part",
-                    "Imaginary part",
-                    epoch_idx,
-                    f"prediction/vol_{vol_id}/slice_{slice_id}/kspace_v2",
-                )
 
+                # Plot 4 coils image
+                fig = plt.figure(figsize=(20, 10))
+                plt.subplot(1,4,1)
+                plt.imshow(vol_c0[slice_id], cmap='gray')
+                plt.axis('off')
+                
+                plt.subplot(1,4,2)
+                plt.imshow(vol_c1[slice_id], cmap='gray')
+                plt.axis('off')
+            
+                plt.subplot(1,4,3)
+                plt.imshow(vol_c2[slice_id], cmap='gray')
+                plt.axis('off')
+                
+                plt.subplot(1,4,4)
+                plt.imshow(vol_c3[slice_id], cmap='gray')
+                plt.axis('off')
+                
+                self.writer.add_figure(
+                    f"prediction/vol_{vol_id}/slice_{slice_id}/coils_img",
+                    fig,
+                    global_step=epoch_idx,
+                )
+                plt.close(fig)
+                
                 # Plot image.
                 fig = plt.figure(figsize=(8, 8))
-                plt.imshow(volume_img[slice_id])
-                
+                plt.imshow(volume_img[slice_id], cmap='gray')
                 self.writer.add_figure(
                     f"prediction/vol_{vol_id}/slice_{slice_id}/volume_img",
                     fig,
@@ -283,7 +295,7 @@ class Trainer:
         fig = plt.figure(figsize=(20, 20))
 
         plt.subplot(2, 2, 1)
-        plt.imshow(data_1 / cste_1)
+        plt.imshow(np.log(data_1 / cste_1))
         plt.colorbar()
         plt.title(f"{title_1} kspace")
 
