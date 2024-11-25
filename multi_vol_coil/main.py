@@ -47,9 +47,19 @@ def main():
 
     torch.set_default_dtype(torch.float32)
 
+    dataset_center = KCoordDataset(**config["dataset_center"])
     dataset = KCoordDataset(**config["dataset"])
+    
     loader_config = config["dataloader"]
     # dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, shuffle=True, collate_fn=collate_fn, pin_memory=PIN_MEMORY, worker_init_fn=seed_worker, generator=RS_TORCH)
+    dataloader_center = DataLoader(
+        dataset_center,
+        batch_size=loader_config["batch_size"],
+        num_workers=int(os.environ["SLURM_CPUS_PER_TASK"]),
+        shuffle=True,
+        pin_memory=loader_config["pin_memory"],
+    )
+
     dataloader = DataLoader(
         dataset,
         batch_size=loader_config["batch_size"],
@@ -57,7 +67,6 @@ def main():
         shuffle=True,
         pin_memory=loader_config["pin_memory"],
     )
-
     model_params = config["model"]["params"]
     
     ## Volume embeddings initialization
@@ -142,6 +151,7 @@ def main():
     t0 = time.time()
 
     trainer = Trainer(
+        dataloader_center=dataloader_center,
         dataloader=dataloader,
         embeddings_vol=embeddings_vol,
         embeddings_coil = embeddings_coil,

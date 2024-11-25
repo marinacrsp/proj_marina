@@ -20,11 +20,13 @@ class KCoordDataset(Dataset):
         n_volumes: int,
         n_slices: int = 3,
         with_mask: bool = True,
+        with_center: bool = False,
         acceleration: int = 4,
         center_frac: float = 0.15,
     ):
         self.metadata = {}
         self.inputs = []
+        self.inputs_unnormalized = []
         self.targets = []
 
         path_to_data = Path(path_to_data)
@@ -62,8 +64,11 @@ class KCoordDataset(Dataset):
                 shape, None, vol_id
             )  # use the volume index as random seed.
 
-            mask, left_idx, right_idx = remove_center(mask)
-            # _, left_idx, right_idx = remove_center(mask)  # NOTE: Uncomment to include the center region in the training data. Note that 'left_idx' and 'right_idx' are still needed.
+            if with_center:
+                _, left_idx, right_idx = remove_center(mask)
+            else:
+                mask, left_idx, right_idx = remove_center(mask)
+            #   # NOTE: Uncomment to include the center region in the training data. Note that 'left_idx' and 'right_idx' are still needed.
 
             ##################################################
             # Computing the indices
@@ -72,8 +77,10 @@ class KCoordDataset(Dataset):
             if with_mask:
                 kx_ids = torch.where(mask.squeeze())[0]
             else:
-                # kx_ids = torch.arange(width)
-                kx_ids = torch.from_numpy(np.setdiff1d(np.arange(width), np.arange(left_idx, right_idx))) # NOTE: Uncomment to include all the datapoints (fully-sampled volume), with the exception of the center region.
+                if with_center:
+                    kx_ids = torch.arange(width)
+                else:
+                    kx_ids = torch.from_numpy(np.setdiff1d(np.arange(width), np.arange(left_idx, right_idx))) # NOTE: Uncomment to include all the datapoints (fully-sampled volume), with the exception of the center region.
 
             ky_ids = torch.arange(height)
             kz_ids = torch.arange(n_slices)
@@ -97,6 +104,7 @@ class KCoordDataset(Dataset):
 
             # Appended volume index
             self.inputs.append(torch.cat((vol_ids, kspace_coords), dim=1))
+            self.inputs_unnormalized.append((kspace_ids))
 
             ##################################################
             # Computing the targets
@@ -136,9 +144,10 @@ class KCoordDataset(Dataset):
 
         self.inputs = torch.cat(self.inputs, dim=0).float()
         self.targets = torch.cat(self.targets, dim=0).float()
+        self.inputs_unnormalized = torch.cat(self.inputs_unnormalized, dim=0)
 
     def __getitem__(self, idx):
-        return self.inputs[idx], self.targets[idx]
+        return self.inputs[idx], self.inputs_unnormalized[idx], self.targets[idx]
 
     def __len__(self):
         return len(self.targets)

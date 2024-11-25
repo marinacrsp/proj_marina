@@ -1,17 +1,27 @@
 seed: 7
 
-# runtype: train
-runtype: test
+runtype: train
+# runtype: test
 
-path_to_outputs: /scratch_net/ken/mcrespo/proj_marina/logs/multivol_11_20_inf
+path_to_outputs: /scratch_net/ken/mcrespo/proj_marina/logs/multivol_11_25
 
-model_checkpoint: /scratch_net/ken/mcrespo/proj_marina/logs/multivol_11_20/2024-11-21_12h21m08s/checkpoints/epoch_0499.pt
+# model_checkpoint: /scratch_net/ken/mcrespo/proj_marina/logs/multivol_11_20/2024-11-21_12h21m08s/checkpoints/epoch_0499.pt
 
-dataset:
-  path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_val/
+dataset_center:
+  path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/
   n_volumes: 2
   n_slices: 2
-  with_mask: True  # NOTE: During training phase, set to False.
+  with_mask: False  # NOTE: During training phase, set to False.
+  with_center: True
+  acceleration: 4
+  center_frac: 0.15
+
+dataset:
+  path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/
+  n_volumes: 2
+  n_slices: 2
+  with_mask: False  # NOTE: During training phase, set to False.
+  with_center: False
   acceleration: 4
   center_frac: 0.15
 
@@ -24,7 +34,7 @@ model:
   params:
     coord_dim: 3
     vol_embedding_dim: 256
-    coil_embedding_dim: 64
+    coil_embedding_dim: 128
     hidden_dim: 512
     n_layers: 8
 
@@ -46,9 +56,10 @@ scheduler:
     step_size: 20_000
 
 # Training Process
-n_epochs: 1_000
+n_epochs: 500
 log_interval: 100
-checkpoint_interval: 1000  # Keep in mind that each checkpoint takes ~241 MB of space.
+center_train_idx: 200
+checkpoint_interval: 500  # Keep in mind that each checkpoint takes ~241 MB of space.
 
 
 ###################################################

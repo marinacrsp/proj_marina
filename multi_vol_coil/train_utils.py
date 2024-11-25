@@ -17,13 +17,13 @@ from torch.utils.tensorboard import SummaryWriter
 
 class Trainer:
     def __init__(
-        self, dataloader, embeddings_vol, embeddings_coil, embeddings_start_idx, model, loss_fn, optimizer, scheduler, config
+        self, dataloader_center, dataloader, embeddings_vol, embeddings_coil, embeddings_start_idx, model, loss_fn, optimizer, scheduler, config
     ) -> None:
         self.device = torch.device(config["device"])
         self.n_epochs = config["n_epochs"]
 
+        self.dataloader_center = dataloader_center
         self.dataloader = dataloader
-
         self.embeddings_vol = embeddings_vol.to(self.device)
         self.embeddings_coil = embeddings_coil.to(self.device)
         self.start_idx = embeddings_start_idx.to(self.device)
@@ -36,7 +36,7 @@ class Trainer:
             self.loss_fn = loss_fn
         self.optimizer = optimizer
         self.scheduler = scheduler
-
+        self.center_train_idx = config["center_train_idx"]
         self.log_interval = config["log_interval"]
         self.checkpoint_interval = config["checkpoint_interval"]
         self.path_to_out = Path(config["path_to_outputs"])
@@ -74,8 +74,12 @@ class Trainer:
         """Train the model across multiple epochs and log the performance."""
         empirical_risk = 0
         for epoch_idx in range(self.n_epochs):
-            empirical_risk = self._train_one_epoch()
-
+            
+            if (epoch_idx + 1) >= self.center_train_idx: 
+                empirical_risk =self._train_with_center()
+            else:
+                empirical_risk = self._train_one_epoch()
+            
             print(f"EPOCH {epoch_idx}    avg loss: {empirical_risk}\n")
             self.writer.add_scalar("Loss/train", empirical_risk, epoch_idx)
             # TODO: UNCOMMENT WHEN USING LR SCHEDULER.
@@ -126,6 +130,41 @@ class Trainer:
         self.scheduler.step()
         avg_loss = avg_loss / n_obs
         return avg_loss
+    
+    def _train_with_center(self):
+        # Also known as "empirical risk".
+        avg_loss = 0.0
+        n_obs = 0
+
+        self.model.train()
+        for batch_idx, (inputs, targets) in enumerate(self.dataloader_center):
+            inputs, targets = inputs.to(self.device), targets.to(self.device)
+            
+            # Get the index for the coil latent embedding
+            coords = inputs[:, 1:-1]
+            
+            vol_ids = inputs[:,0].long()
+            coil_ids = inputs[:,-1].long() 
+            
+            latent_vol = self.embeddings_vol(vol_ids)
+            latent_coil = self.embeddings_coil(self.start_idx[vol_ids] + coil_ids)
+            
+            self.optimizer.zero_grad(set_to_none=True)
+    
+            outputs = self.model(coords, latent_vol, latent_coil)
+            
+            # Can be thought as a moving average (with "stride" `batch_size`) of the loss.
+            batch_loss = self.loss_fn(outputs, targets, latent_vol)
+
+            batch_loss.backward()
+            self.optimizer.step()
+
+            avg_loss += batch_loss.item() * len(inputs)
+            n_obs += len(inputs)
+
+        self.scheduler.step()
+        avg_loss = avg_loss / n_obs
+        return avg_loss
 
     ###########################################################################
     ###########################################################################
@@ -139,6 +178,7 @@ class Trainer:
 
         # Create tensors of indices for each dimension
         kx_ids = torch.cat([torch.arange(left_idx), torch.arange(right_idx, width)])
+        # kx_ids = torch.arange(width)
         ky_ids = torch.arange(height)
         kz_ids = torch.arange(n_slices)
         coil_ids = torch.arange(n_coils)
