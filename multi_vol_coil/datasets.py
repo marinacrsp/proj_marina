@@ -76,6 +76,7 @@ class KCoordDataset(Dataset):
             n_slices, n_coils, height, width = volume_kspace.shape[:-1]
             if with_mask:
                 kx_ids = torch.where(mask.squeeze())[0]
+                    
             else:
                 if with_center:
                     kx_ids = torch.arange(width)

@@ -11,8 +11,8 @@ conda activate pytcu11
 
 # # # # Debugging: Check if SLURM_JOB_NODELIST is defined and populated
 
-master_addr=$(echo $SLURM_JOB_NODELIST | sed 's/,.*//' | sed 's/\[.*\]//')
-export MASTER_ADDR=$master_addr
+# master_addr=$(echo $SLURM_JOB_NODELIST | sed 's/,.*//' | sed 's/\[.*\]//')
+# export MASTER_ADDR=$master_addr
 
 
 # # # Print debugging info for verification

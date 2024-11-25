@@ -49,11 +49,19 @@ def main():
 
     dataset_center = KCoordDataset(**config["dataset_center"])
     dataset = KCoordDataset(**config["dataset"])
+    dataset_edges = KCoordDataset(**config["dataset_edges"])
     
     loader_config = config["dataloader"]
     # dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, shuffle=True, collate_fn=collate_fn, pin_memory=PIN_MEMORY, worker_init_fn=seed_worker, generator=RS_TORCH)
     dataloader_center = DataLoader(
         dataset_center,
+        batch_size=loader_config["batch_size"],
+        num_workers=int(os.environ["SLURM_CPUS_PER_TASK"]),
+        shuffle=True,
+        pin_memory=loader_config["pin_memory"],
+    )
+    dataloader_edges = DataLoader(
+        dataset_edges,
         batch_size=loader_config["batch_size"],
         num_workers=int(os.environ["SLURM_CPUS_PER_TASK"]),
         shuffle=True,
@@ -153,6 +161,7 @@ def main():
     trainer = Trainer(
         dataloader_center=dataloader_center,
         dataloader=dataloader,
+        dataloader_edges = dataloader_edges,
         embeddings_vol=embeddings_vol,
         embeddings_coil = embeddings_coil,
         embeddings_start_idx=start_idx,

@@ -7,6 +7,15 @@ path_to_outputs: /scratch_net/ken/mcrespo/proj_marina/logs/multivol_11_25
 
 # model_checkpoint: /scratch_net/ken/mcrespo/proj_marina/logs/multivol_11_20/2024-11-21_12h21m08s/checkpoints/epoch_0499.pt
 
+dataset:
+  path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/
+  n_volumes: 2
+  n_slices: 2
+  with_mask: False  # NOTE: During training phase, set to False.
+  with_center: False
+  acceleration: 4
+  center_frac: 0.15
+
 dataset_center:
   path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/
   n_volumes: 2
@@ -16,14 +25,14 @@ dataset_center:
   acceleration: 4
   center_frac: 0.15
 
-dataset:
+dataset_edges:
   path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/
   n_volumes: 2
   n_slices: 2
   with_mask: False  # NOTE: During training phase, set to False.
   with_center: False
   acceleration: 4
-  center_frac: 0.15
+  center_frac: 0.55
 
 dataloader:
   batch_size: 240_000
@@ -56,10 +65,11 @@ scheduler:
     step_size: 20_000
 
 # Training Process
-n_epochs: 500
+n_epochs: 600
 log_interval: 100
 center_train_idx: 200
-checkpoint_interval: 500  # Keep in mind that each checkpoint takes ~241 MB of space.
+edges_train_idx: 400
+checkpoint_interval: 600  # Keep in mind that each checkpoint takes ~241 MB of space.
 
 
 ###################################################

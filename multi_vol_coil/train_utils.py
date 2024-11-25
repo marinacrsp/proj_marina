@@ -17,13 +17,14 @@ from torch.utils.tensorboard import SummaryWriter
 
 class Trainer:
     def __init__(
-        self, dataloader_center, dataloader, embeddings_vol, embeddings_coil, embeddings_start_idx, model, loss_fn, optimizer, scheduler, config
+        self, dataloader_center, dataloader, dataloader_edges, embeddings_vol, embeddings_coil, embeddings_start_idx, model, loss_fn, optimizer, scheduler, config
     ) -> None:
         self.device = torch.device(config["device"])
         self.n_epochs = config["n_epochs"]
 
         self.dataloader_center = dataloader_center
         self.dataloader = dataloader
+        self.dataloader_edges = dataloader_edges
         self.embeddings_vol = embeddings_vol.to(self.device)
         self.embeddings_coil = embeddings_coil.to(self.device)
         self.start_idx = embeddings_start_idx.to(self.device)
@@ -37,6 +38,7 @@ class Trainer:
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.center_train_idx = config["center_train_idx"]
+        self.edges_train_idx = config["edges_train_idx"]
         self.log_interval = config["log_interval"]
         self.checkpoint_interval = config["checkpoint_interval"]
         self.path_to_out = Path(config["path_to_outputs"])
@@ -75,11 +77,15 @@ class Trainer:
         empirical_risk = 0
         for epoch_idx in range(self.n_epochs):
             
-            if (epoch_idx + 1) >= self.center_train_idx: 
+            if (epoch_idx + 1) <= self.center_train_idx: 
                 empirical_risk =self._train_with_center()
-            else:
-                empirical_risk = self._train_one_epoch()
             
+            elif (epoch_idx + 1) > self.center_train_idx: # doesn't contain the center
+                empirical_risk = self._train_one_epoch()
+                
+            elif (epoch_idx + 1) > self.edges_train_idx: # ONLY contains the edges
+                empirical_risk = self._train_with_edges()
+
             print(f"EPOCH {epoch_idx}    avg loss: {empirical_risk}\n")
             self.writer.add_scalar("Loss/train", empirical_risk, epoch_idx)
             # TODO: UNCOMMENT WHEN USING LR SCHEDULER.
@@ -102,7 +108,7 @@ class Trainer:
         n_obs = 0
 
         self.model.train()
-        for batch_idx, (inputs, targets) in enumerate(self.dataloader):
+        for batch_idx, (inputs, _, targets) in enumerate(self.dataloader):
             inputs, targets = inputs.to(self.device), targets.to(self.device)
             
             # Get the index for the coil latent embedding
@@ -137,7 +143,7 @@ class Trainer:
         n_obs = 0
 
         self.model.train()
-        for batch_idx, (inputs, targets) in enumerate(self.dataloader_center):
+        for batch_idx, (inputs, _, targets) in enumerate(self.dataloader_center):
             inputs, targets = inputs.to(self.device), targets.to(self.device)
             
             # Get the index for the coil latent embedding
@@ -166,6 +172,41 @@ class Trainer:
         avg_loss = avg_loss / n_obs
         return avg_loss
 
+
+    def _train_with_edges(self):
+        # Also known as "empirical risk".
+        avg_loss = 0.0
+        n_obs = 0
+
+        self.model.train()
+        for batch_idx, (inputs, _, targets) in enumerate(self.dataloader_edges):
+            inputs, targets = inputs.to(self.device), targets.to(self.device)
+            
+            # Get the index for the coil latent embedding
+            coords = inputs[:, 1:-1]
+            
+            vol_ids = inputs[:,0].long()
+            coil_ids = inputs[:,-1].long() 
+            
+            latent_vol = self.embeddings_vol(vol_ids)
+            latent_coil = self.embeddings_coil(self.start_idx[vol_ids] + coil_ids)
+            
+            self.optimizer.zero_grad(set_to_none=True)
+    
+            outputs = self.model(coords, latent_vol, latent_coil)
+            
+            # Can be thought as a moving average (with "stride" `batch_size`) of the loss.
+            batch_loss = self.loss_fn(outputs, targets, latent_vol)
+
+            batch_loss.backward()
+            self.optimizer.step()
+
+            avg_loss += batch_loss.item() * len(inputs)
+            n_obs += len(inputs)
+
+        self.scheduler.step()
+        avg_loss = avg_loss / n_obs
+        return avg_loss
     ###########################################################################
     ###########################################################################
     ###########################################################################
@@ -178,7 +219,6 @@ class Trainer:
 
         # Create tensors of indices for each dimension
         kx_ids = torch.cat([torch.arange(left_idx), torch.arange(right_idx, width)])
-        # kx_ids = torch.arange(width)
         ky_ids = torch.arange(height)
         kz_ids = torch.arange(n_slices)
         coil_ids = torch.arange(n_coils)
@@ -238,6 +278,74 @@ class Trainer:
 
         self.model.train()
         return volume_img, vol_c0, vol_c1, vol_c2, vol_c3
+    
+    def predict_all(self, vol_id, shape, left_idx, right_idx, center_vals):
+        """Reconstruct MRI volume (k-space)."""
+        self.model.eval()
+        n_slices, n_coils, height, width = shape
+
+        # Create tensors of indices for each dimension
+        # kx_ids = torch.cat([torch.arange(left_idx), torch.arange(right_idx, width)])
+        kx_ids = torch.arange(width)
+        ky_ids = torch.arange(height)
+        kz_ids = torch.arange(n_slices)
+        coil_ids = torch.arange(n_coils)
+
+        # Use meshgrid to create expanded grids
+        kspace_ids = torch.meshgrid(kx_ids, ky_ids, kz_ids, coil_ids, indexing="ij")
+        kspace_ids = torch.stack(kspace_ids, dim=-1).reshape(-1, len(kspace_ids))
+
+        dataset = TensorDataset(kspace_ids)
+        dataloader = DataLoader(
+            dataset, batch_size=60_000, shuffle=False, num_workers=3
+        )
+        vol_embeddings = self.embeddings_vol(
+            torch.tensor([vol_id] * 60_000, dtype=torch.long, device=self.device)
+        )
+
+        volume_kspace = torch.zeros(
+            (n_slices, n_coils, height, width, 2),
+            device=self.device,
+            dtype=torch.float32,
+        )
+        for point_ids in dataloader:
+            point_ids = point_ids[0].to(self.device, dtype=torch.long)
+            coords = torch.zeros_like(
+                point_ids[:,:-1], dtype=torch.float32, device=self.device
+            )
+            # Normalize the necessary coordinates for hash encoding to work
+            coords[:, 0] = (2 * point_ids[:, 0]) / (width - 1) - 1
+            coords[:, 1] = (2 * point_ids[:, 1]) / (height - 1) - 1
+            coords[:, 2] = (2 * point_ids[:, 2]) / (n_slices - 1) - 1
+
+            coil_embeddings = self.embeddings_coil(self.start_idx[vol_id] + point_ids[:, 3])
+
+            # Need to add `:len(coords)` because the last batch has a different size (than 60_000).
+            outputs = self.model(coords, vol_embeddings[: len(coords)], coil_embeddings)
+            
+            # "Fill in" the unsampled region.
+            volume_kspace[
+                point_ids[:, 2], point_ids[:, 3], point_ids[:, 1], point_ids[:, 0]
+            ] = outputs
+
+        # Multiply by the normalization constant.
+        # volume_kspace = (
+        #     volume_kspace * self.dataloader.dataset.metadata[vol_id]["norm_cste"]
+        # )
+
+        volume_kspace = tensor_to_complex_np(volume_kspace.detach().cpu())
+
+        # "Fill-in" center values.
+        # volume_kspace[..., left_idx:right_idx] = center_vals
+
+        volume_img = rss(inverse_fft2_shift(volume_kspace))
+        vol_c0 = np.abs(inverse_fft2_shift(volume_kspace)[:,0])
+        vol_c1 = np.abs(inverse_fft2_shift(volume_kspace)[:,1]) 
+        vol_c2 = np.abs(inverse_fft2_shift(volume_kspace)[:,2]) 
+        vol_c3 = np.abs(inverse_fft2_shift(volume_kspace)[:,3])
+
+        self.model.train()
+        return volume_img, vol_c0, vol_c1, vol_c2, vol_c3
 
     @torch.no_grad() 
     def _log_performance(self, epoch_idx):
@@ -251,7 +359,11 @@ class Trainer:
                 center_data["vals"],
             )
 
-            volume_img, vol_c0, vol_c1, vol_c2, vol_c3 = self.predict(vol_id, shape, left_idx, right_idx, center_vals)
+            
+            if (epoch_idx+1) >= self.edges_train_idx:
+                volume_img, vol_c0, vol_c1, vol_c2, vol_c3 = self.predict_all(vol_id, shape, left_idx, right_idx, center_vals)
+            else:
+                volume_img, vol_c0, vol_c1, vol_c2, vol_c3 = self.predict(vol_id, shape, left_idx, right_idx, center_vals)
 
             volume_kspace = fft2_shift(volume_img)  # To get "single-coil" k-space.
 
