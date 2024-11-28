@@ -64,7 +64,7 @@ class KCoordDataset(Dataset):
                 shape, None, vol_id
             )  # use the volume index as random seed.
 
-            if with_center:
+            if with_center: # NOTE: Don't remove the center
                 _, left_idx, right_idx = remove_center(mask)
             else:
                 mask, left_idx, right_idx = remove_center(mask)

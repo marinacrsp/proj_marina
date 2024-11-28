@@ -65,10 +65,6 @@ def main():
     embeddings_vol = torch.nn.Embedding(
         len(dataset.metadata), model_params["vol_embedding_dim"]
     )
-    torch.nn.init.normal_(
-        embeddings_vol.weight.data, 0.0, config["loss"]["params"]["sigma"]
-    )
-    
 
     ## Coil embeddings initialization
     ########################################################
@@ -84,10 +80,6 @@ def main():
 
     # Create the table of embeddings for the coils
     embeddings_coil = torch.nn.Embedding(total_n_coils.item(), model_params["coil_embedding_dim"])
-    torch.nn.init.normal_(
-        embeddings_coil.weight.data, 0.0, config["loss"]["params"]["sigma"]
-    )
-
 
     model = MODEL_CLASSES[config["model"]["id"]](**model_params)
 
@@ -99,18 +91,35 @@ def main():
 
         # Load checkpoint.
         model_state_dict = torch.load(config["model_checkpoint"])["model_state_dict"]
+        pre_coil_embeddings = torch.load(config["model_checkpoint"])["embedding_coil_state_dict"]["weight"]
+        pre_vol_embeddings = torch.load(config["model_checkpoint"])["embedding_vol_state_dict"]["weight"]
+        
+        embeddings_vol.weight.data.copy_(torch.mean(pre_vol_embeddings))
+        embeddings_coil.weight.data.copy_(torch.mean(pre_coil_embeddings))
         model.load_state_dict(model_state_dict)
         print("Checkpoint loaded successfully.")
 
-        # Only embeddings are optimized.
-        for param in model.parameters():
+        # Freeze the parameters in sine layers
+        for param in model.sine_layers.parameters():
+            param.requires_grad = False
+        # Freeze the parameters in output layer (in case they are not frozen)
+        for param in model.output_layer.parameters():
             param.requires_grad = False
 
+        # Only embeddings and Hash encoders are optimized.
         optimizer = OPTIMIZER_CLASSES[config["optimizer"]["id"]](
-            chain(embeddings_vol.parameters(), embeddings_coil.parameters()), **config["optimizer"]["params"]
+            chain(model.embed_fn.parameters(), embeddings_vol.parameters(), embeddings_coil.parameters()), **config["optimizer"]["params"]
         )
 
     elif config["runtype"] == "train":
+        
+        # Initialize the volume and coil embeddings with gaussian initialization
+        torch.nn.init.normal_(
+            embeddings_vol.weight.data, 0.0, config["loss"]["params"]["sigma"]
+        )
+        torch.nn.init.normal_(
+        embeddings_coil.weight.data, 0.0, config["loss"]["params"]["sigma"]
+    )
         if "model_checkpoint" in config.keys():
             model_state_dict = torch.load(config["model_checkpoint"])[
                 "model_state_dict"

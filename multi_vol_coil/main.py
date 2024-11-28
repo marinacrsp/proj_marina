@@ -47,27 +47,9 @@ def main():
 
     torch.set_default_dtype(torch.float32)
 
-    dataset_center = KCoordDataset(**config["dataset_center"])
     dataset = KCoordDataset(**config["dataset"])
-    dataset_edges = KCoordDataset(**config["dataset_edges"])
-    
     loader_config = config["dataloader"]
     # dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, shuffle=True, collate_fn=collate_fn, pin_memory=PIN_MEMORY, worker_init_fn=seed_worker, generator=RS_TORCH)
-    dataloader_center = DataLoader(
-        dataset_center,
-        batch_size=loader_config["batch_size"],
-        num_workers=int(os.environ["SLURM_CPUS_PER_TASK"]),
-        shuffle=True,
-        pin_memory=loader_config["pin_memory"],
-    )
-    dataloader_edges = DataLoader(
-        dataset_edges,
-        batch_size=loader_config["batch_size"],
-        num_workers=int(os.environ["SLURM_CPUS_PER_TASK"]),
-        shuffle=True,
-        pin_memory=loader_config["pin_memory"],
-    )
-
     dataloader = DataLoader(
         dataset,
         batch_size=loader_config["batch_size"],
@@ -75,17 +57,16 @@ def main():
         shuffle=True,
         pin_memory=loader_config["pin_memory"],
     )
+
     model_params = config["model"]["params"]
     
-    ## Volume embeddings initialization
-    ########################################################
+    #####################################################################
+    # volume embedding
+    #####################################################################
     embeddings_vol = torch.nn.Embedding(
         len(dataset.metadata), model_params["vol_embedding_dim"]
     )
-    torch.nn.init.normal_(
-        embeddings_vol.weight.data, 0.0, config["loss"]["params"]["sigma"]
-    )
-    
+
 
     ## Coil embeddings initialization
     ########################################################
@@ -98,16 +79,11 @@ def main():
     
     # Create the indexes to access the embedding coil table
     start_idx = torch.tensor([0] + list(torch.cumsum(torch.tensor(coil_sizes), dim=0)[:-1]))
-
-    # Create the table of embeddings for the coils
     embeddings_coil = torch.nn.Embedding(total_n_coils.item(), model_params["coil_embedding_dim"])
-    torch.nn.init.normal_(
-        embeddings_coil.weight.data, 0.0, config["loss"]["params"]["sigma"]
-    )
 
 
     model = MODEL_CLASSES[config["model"]["id"]](**model_params)
-    print(model)
+
 ## NOTE : Train or inference
     if config["runtype"] == "test":
         assert (
@@ -117,6 +93,13 @@ def main():
         # Load checkpoint.
         model_state_dict = torch.load(config["model_checkpoint"])["model_state_dict"]
         model.load_state_dict(model_state_dict)
+        
+        pre_coil_embeddings = torch.load(config["model_checkpoint"])["embedding_coil_state_dict"]["weight"]
+        pre_vol_embeddings = torch.load(config["model_checkpoint"])["embedding_vol_state_dict"]["weight"]
+        
+        embeddings_vol.weight.data.copy_(torch.mean(pre_vol_embeddings))
+        embeddings_coil.weight.data.copy_(torch.mean(pre_coil_embeddings))
+    
         print("Checkpoint loaded successfully.")
 
         # Only embeddings are optimized.
@@ -128,6 +111,13 @@ def main():
         )
 
     elif config["runtype"] == "train":
+        ## Initialize the values of the embedding vectors
+        torch.nn.init.normal_(
+        embeddings_coil.weight.data, 0.0, config["loss"]["params"]["sigma"]
+    )
+        torch.nn.init.normal_(
+        embeddings_vol.weight.data, 0.0, config["loss"]["params"]["sigma"]
+    )
         if "model_checkpoint" in config.keys():
             model_state_dict = torch.load(config["model_checkpoint"])[
                 "model_state_dict"
@@ -158,10 +148,10 @@ def main():
     print(f"Starting {config['runtype']} process...")
     t0 = time.time()
 
+
     trainer = Trainer(
-        dataloader_center=dataloader_center,
+        mode=config["runtype"],
         dataloader=dataloader,
-        dataloader_edges = dataloader_edges,
         embeddings_vol=embeddings_vol,
         embeddings_coil = embeddings_coil,
         embeddings_start_idx=start_idx,

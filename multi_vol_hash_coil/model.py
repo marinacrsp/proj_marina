@@ -8,12 +8,12 @@ from torch import nn
 class Siren(nn.Module):
     def __init__(
         self,
-        coord_dim=4,
+        coord_dim=3,
         levels = 10,
         n_min = 16,
         size_hashtable = 12,
         vol_embedding_dim=256,
-        coil_embedding_dim = 64,
+        coil_embedding_dim = 128,
         hidden_dim=512,
         n_layers=4,
         n_features=3,
