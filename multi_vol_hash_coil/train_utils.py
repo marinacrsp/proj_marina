@@ -38,6 +38,7 @@ class Trainer:
         self.scheduler = scheduler
 
         self.log_interval = config["log_interval"]
+        self.inference_mode = config["dataset"]["with_mask"]
         self.checkpoint_interval = config["checkpoint_interval"]
         self.path_to_out = Path(config["path_to_outputs"])
         self.timestamp = config["timestamp"]
@@ -218,9 +219,18 @@ class Trainer:
             predicted_mask = 1-mask.expand(shape).numpy()
             acquired_mask= mask.expand(shape).numpy()
             
-            volume_kspace = volume_kspace*(predicted_mask) + self.kspace_gt[vol_id]*(acquired_mask)
-            raw_kspace = self.kspace_gt[vol_id]*(acquired_mask)  
-            raw_kspace[..., left_idx:right_idx] = center_vals
+            
+            ### Mode of inference
+            if self.inference_mode: # NOTE: with_mask True 
+                volume_kspace = volume_kspace*(predicted_mask) + self.kspace_gt[vol_id]*(acquired_mask)
+                raw_kspace = self.kspace_gt[vol_id]*(acquired_mask)  
+                raw_kspace[..., left_idx:right_idx] = center_vals
+                log_title = 'Acquired + predicted'
+                
+            else: # NOTE: with_mask False, evaluate prediction on the whole kspace
+                raw_kspace = self.kspace_gt[vol_id] 
+                log_title = 'Predicted'
+                
             
             volume_img = rss(inverse_fft2_shift(volume_kspace))
             raw_volume_img = rss(inverse_fft2_shift(raw_kspace))
@@ -279,7 +289,7 @@ class Trainer:
                 plt.subplot(1,2,1)
                 plt.imshow(volume_img[slice_id], cmap='gray')
                 plt.axis('off')
-                plt.title('Acquired + Predicted')
+                plt.title(log_title)
                 plt.subplot(1,2,2)
                 plt.imshow(raw_volume_img[slice_id], cmap='gray')
                 plt.axis('off')
