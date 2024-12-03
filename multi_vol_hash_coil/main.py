@@ -98,19 +98,31 @@ def main():
         embeddings_coil.weight.data.copy_(torch.mean(pre_coil_embeddings))
         model.load_state_dict(model_state_dict)
         print("Checkpoint loaded successfully.")
+        
+        
+        if config["hash_freeze"]:
+            print('Optimizing volume and coil embeddings...')
+            # Freeze the whole model
+            for param in model.parameters():
+                param.requires_grad = False
 
-        # Freeze the parameters in sine layers
-        for param in model.sine_layers.parameters():
-            param.requires_grad = False
-        # Freeze the parameters in output layer (in case they are not frozen)
-        for param in model.output_layer.parameters():
-            param.requires_grad = False
-
-        # Only embeddings and Hash encoders are optimized.
-        optimizer = OPTIMIZER_CLASSES[config["optimizer"]["id"]](
-            chain(model.embed_fn.parameters(), embeddings_vol.parameters(), embeddings_coil.parameters()), **config["optimizer"]["params"]
-        )
-
+            optimizer = OPTIMIZER_CLASSES[config["optimizer"]["id"]](
+                        chain(embeddings_vol.parameters(), embeddings_coil.parameters()), **config["optimizer"]["params"]
+                    )
+        else:
+            print('Optimizing volume, coil and hash embeddings...')
+            # Freeze the parameters in sine layers
+            for param in model.sine_layers.parameters():
+                param.requires_grad = False
+            # Freeze the parameters in output layer (in case they are not frozen)
+            for param in model.output_layer.parameters():
+                param.requires_grad = False
+                
+            # Only embeddings and Hash encoders are optimized.
+            optimizer = OPTIMIZER_CLASSES[config["optimizer"]["id"]](
+                chain(model.embed_fn.parameters(), embeddings_vol.parameters(), embeddings_coil.parameters()), **config["optimizer"]["params"]
+            )
+    
     elif config["runtype"] == "train":
         
         # Initialize the volume and coil embeddings with gaussian initialization
