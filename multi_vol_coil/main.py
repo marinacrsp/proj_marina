@@ -149,7 +149,6 @@ def main():
 
 
     trainer = Trainer(
-        mode=config["runtype"],
         dataloader=dataloader,
         embeddings_vol=embeddings_vol,
         phi_vol = phi_vol_zero,

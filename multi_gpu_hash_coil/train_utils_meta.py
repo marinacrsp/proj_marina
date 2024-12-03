@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from data_utils import *
 from torch.optim import SGD, Adam, AdamW
-from fastmri.data.transforms import tensor_to_complex_np
+from fastmri.data.transforms import tensor_to_complex_np, to_tensor
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import broadcast
@@ -51,8 +51,11 @@ class Trainer:
         self.model = DDP(self.model, device_ids=[self.device])
         
         # Wrap the embeddings also in the data distributed parallelism
+        self.embeddings_vol, self.embeddings_coil = embeddings_vol.to(self.device), embeddings_coil.to(self.device)
         self.embeddings_vol, self.embeddings_coil = DDP(embeddings_vol, device_ids=[self.device]), DDP(embeddings_coil, device_ids=[self.device])
+        self.n_levels_hash = config["model"]["params"]["levels"]
         self.phi_vol, self.phi_coil = phi_vol.to(self.device), phi_coil.to(self.device)
+        
         self.meta_reinitialization = config["meta_learning"]["reinit_step"]
         self.epsilon_meta = config["meta_learning"]["epsilon"]
         self.start_idx = embeddings_coil_idx.to(self.device)
@@ -75,11 +78,16 @@ class Trainer:
 
             # Ground truth (used to compute the evaluation metrics).
             self.ground_truth = []
+            self.kspace_gt = []
             for vol_id in self.dataloader.dataset.metadata.keys():
                 file = self.dataloader.dataset.metadata[vol_id]["file"]
                 with h5py.File(file, "r") as hf:
                     self.ground_truth.append(
                         hf["reconstruction_rss"][()][: config["dataset"]["n_slices"]]
+                    )
+                    self.kspace_gt.append(
+                        tensor_to_complex_np(to_tensor(preprocess_kspace(hf["kspace"][()][: config["dataset"]["n_slices"]]
+                    )))
                     )
 
             # Scientific and nuissance hyperparameters.
@@ -138,7 +146,7 @@ class Trainer:
             
 
         
-    def _run_epoch(self, epoch_idx):
+    def _run_epoch(self):
         # Also known as "empirical risk".
         avg_loss = 0.0
         n_obs = 0
@@ -364,6 +372,7 @@ class Trainer:
                 )
                 plt.close(fig)
                 
+                
             self._log_hash_embeddings(epoch_idx, f"embeddings/hash")
             self._log_coil_embeddings(epoch_idx, f"embeddings/coil")
 
@@ -397,7 +406,7 @@ class Trainer:
         self, epoch_idx, tag
         
     ):
-        full_coil_embeddings, vol_embeddings = self.embeddings_coil.weight.data.cpu(), self.embeddings_vol.weight.data.cpu()
+        full_coil_embeddings, vol_embeddings = self.embeddings_coil.module.weight.data.cpu(), self.embeddings_vol.module.weight.data.cpu()
         nvols = vol_embeddings.shape[0]
         fig = plt.figure(figsize=(nvols*6,12))
 
@@ -425,7 +434,7 @@ class Trainer:
     ):
         fig = plt.figure(figsize=(self.n_levels_hash*6,12))
 
-        for i, level in enumerate(self.model.embed_fn.parameters()):
+        for i, level in enumerate(self.model.module.embed_fn.parameters()):
             box_embedd = level.detach().cpu()
             plt.subplot(self.n_levels_hash,1,i+1)
             plt.title(f"Level: {i+1}")

@@ -46,6 +46,8 @@ class Trainer:
         self.n_epochs = config["n_epochs"]
         self.config = config
         self.dataloader = dataloader
+        
+        self.embeddings_vol, self.embeddings_coil = embeddings_vol.to(self.device), embeddings_coil.to(self.device)
         self.embeddings_vol, self.embeddings_coil = DDP(embeddings_vol, device_ids=[self.device]), DDP(embeddings_coil, device_ids=[self.device])
         self.phi_vol, self.phi_coil = phi_vol.to(self.device), phi_coil.to(self.device)
         

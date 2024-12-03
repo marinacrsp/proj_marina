@@ -35,13 +35,13 @@ class Trainer:
 
         self.dataloader = dataloader
         self.embeddings_vol, self.embeddings_coil = embeddings_vol.to(self.device), embeddings_coil.to(self.device)
+        self.embeddings_vol, self.embeddings_coil = DDP(embeddings_vol, device_ids=[self.device]), DDP(embeddings_coil, device_ids=[self.device])
         
         # Wrap the model in the data distributed parallelism
         self.model = model.to(self.device)
         self.model = DDP(self.model, device_ids=[self.device])
         
         # Wrap the embeddings also in the data distributed parallelism
-        self.embeddings_vol, self.embeddings_coil = DDP(embeddings_vol, device_ids=[self.device]), DDP(embeddings_coil, device_ids=[self.device])
         self.start_idx = embeddings_coil_idx.to(self.device)
 
         # If stateful loss function, move its "parameters" to `device`.

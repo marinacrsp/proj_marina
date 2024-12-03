@@ -23,9 +23,8 @@ OPTIMIZER_CLASSES = {
 
 class Trainer:
     def __init__(
-        self, mode, dataloader, embeddings_vol, phi_vol, embeddings_coil, phi_coil, embeddings_start_idx, model, loss_fn, optimizer, scheduler, config
-    ) -> None:
-        self.mode = mode
+        self, dataloader, embeddings_vol, phi_vol, embeddings_coil, phi_coil, embeddings_start_idx, model, loss_fn, optimizer, scheduler, config
+        ) -> None:
         self.device = torch.device(config["device"])
         self.n_epochs = config["n_epochs"]
 

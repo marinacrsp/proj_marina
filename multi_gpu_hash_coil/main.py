@@ -12,7 +12,7 @@ from torch.optim import SGD, Adam, AdamW
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from train_utils import *
+from train_utils_meta import *
 
 
 def ddp_setup(rank, world_size):
@@ -73,14 +73,12 @@ def main(rank: int, world_size: int, config: dict):
     #####################################################################
     
     model_params = config["model"]["params"]
+    
     #####################################################################
     # volume embedding
     #####################################################################
     embeddings_vol = torch.nn.Embedding(
         len(dataset.metadata), model_params["vol_embedding_dim"]
-    )
-    torch.nn.init.normal_(
-        embeddings_vol.weight.data, 0.0, config["loss"]["params"]["sigma"]
     )
 
     ###################################################################
@@ -98,9 +96,6 @@ def main(rank: int, world_size: int, config: dict):
 
     # Create the table of embeddings for the coils
     embeddings_coil = torch.nn.Embedding(total_n_coils.item(), model_params["coil_embedding_dim"])
-    torch.nn.init.normal_(
-        embeddings_coil.weight.data, 0.0, config["loss"]["params"]["sigma"]
-    )
 
     model = MODEL_CLASSES[config["model"]["id"]](**model_params)
 
@@ -123,6 +118,12 @@ def main(rank: int, world_size: int, config: dict):
         )
 
     elif config["runtype"] == "train":
+        phi_coil_zero = torch.normal(0.0, config["loss"]["params"]["sigma"], size=(model_params["coil_embedding_dim"],))
+        embeddings_coil.weight.data.copy_(phi_coil_zero.unsqueeze(0).repeat(total_n_coils.item(), 1))
+        
+        phi_vol_zero = torch.normal(0.0, config["loss"]["params"]["sigma"], size=(model_params["vol_embedding_dim"],))
+        embeddings_vol.weight.data.copy_(phi_vol_zero.unsqueeze(0).repeat(len(dataset.metadata), 1))
+        
         if "model_checkpoint" in config.keys():
             model_state_dict = torch.load(config["model_checkpoint"])[
                 "model_state_dict"
@@ -158,7 +159,9 @@ def main(rank: int, world_size: int, config: dict):
     trainer = Trainer(
         dataloader=dataloader,
         embeddings_vol=embeddings_vol,
+        phi_vol=phi_vol_zero,
         embeddings_coil=embeddings_coil,
+        phi_coil=phi_coil_zero,
         embeddings_coil_idx = start_idx,
         model=model,
         loss_fn=loss_fn,
