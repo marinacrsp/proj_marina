@@ -65,7 +65,10 @@ def main():
     embeddings_vol = torch.nn.Embedding(
         len(dataset.metadata), model_params["vol_embedding_dim"]
     )
-
+    phi_vol_zero = torch.normal(0.0, config["loss"]["params"]["sigma"], size=(model_params["vol_embedding_dim"],))
+    embeddings_vol.weight.data.copy_(phi_vol_zero.unsqueeze(0).repeat(len(dataset.metadata), 1))
+    
+    
     ## Coil embeddings initialization
     ########################################################
     coil_sizes = []
@@ -80,9 +83,15 @@ def main():
 
     # Create the table of embeddings for the coils
     embeddings_coil = torch.nn.Embedding(total_n_coils.item(), model_params["coil_embedding_dim"])
+    
+    phi_coil_zero = torch.normal(0.0, config["loss"]["params"]["sigma"], size=(model_params["coil_embedding_dim"],))
+    embeddings_coil.weight.data.copy_(phi_coil_zero.unsqueeze(0).repeat(total_n_coils.item(), 1))
+
 
     model = MODEL_CLASSES[config["model"]["id"]](**model_params)
-
+    
+    
+    
 ## NOTE : Train or inference
     if config["runtype"] == "test":
         assert (
@@ -165,7 +174,9 @@ def main():
     trainer = Trainer(
         dataloader=dataloader,
         embeddings_vol=embeddings_vol,
+        phi_vol=phi_vol_zero,
         embeddings_coil = embeddings_coil,
+        phi_coil=phi_coil_zero,
         embeddings_start_idx=start_idx,
         model=model,
         loss_fn=loss_fn,
