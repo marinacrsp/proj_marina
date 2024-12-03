@@ -6,15 +6,15 @@ runtype: test
 # hash_freeze: True
 hash_freeze: False
 
-path_to_outputs: /scratch_net/ken/mcrespo/proj_marina/logs/multivol_11_28_inf
+path_to_outputs: /scratch_net/ken/mcrespo/proj_marina/logs/multivol_12_02_inf
 
 model_checkpoint: /scratch_net/ken/mcrespo/proj_marina/logs/multivol_11_20/2024-11-22_12h36m48s/checkpoints/epoch_0499.pt
 
 dataset:
-  path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_train/
+  path_to_data: /itet-stor/mcrespo/bmicdatasets-originals/Originals/fastMRI/brain/multicoil_val/
   n_volumes: 3
   n_slices: 2
-  with_mask: False  # NOTE: During training phase, set to False.
+  with_mask: True  # NOTE: During training phase, set to False.
   acceleration: 4
   center_frac: 0.15
 

@@ -93,11 +93,11 @@ def main():
 
         # Load checkpoint.
         model_state_dict = torch.load(config["model_checkpoint"])["model_state_dict"]
-        pre_coil_embeddings = torch.load(config["model_checkpoint"])["embedding_coil_state_dict"]["weight"]
-        pre_vol_embeddings = torch.load(config["model_checkpoint"])["embedding_vol_state_dict"]["weight"]
+        phi_coil_zero = torch.load(config["model_checkpoint"])["embedding_coil_state_dict"]["weight"]
+        phi_vol_zero = torch.load(config["model_checkpoint"])["embedding_vol_state_dict"]["weight"]
         
-        embeddings_vol.weight.data.copy_(torch.mean(pre_vol_embeddings))
-        embeddings_coil.weight.data.copy_(torch.mean(pre_coil_embeddings))
+        embeddings_vol.weight.data.copy_(torch.mean(phi_coil_zero))
+        embeddings_coil.weight.data.copy_(torch.mean(phi_vol_zero))
         model.load_state_dict(model_state_dict)
         print("Checkpoint loaded successfully.")
         
