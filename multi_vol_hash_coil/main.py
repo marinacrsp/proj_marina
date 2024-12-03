@@ -13,7 +13,7 @@ from model import *
 from torch.optim import SGD, Adam, AdamW
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
-from train_utils import *
+from train_utils_meta import *
 
 MODEL_CLASSES = {
     "Siren": Siren,
@@ -65,9 +65,7 @@ def main():
     embeddings_vol = torch.nn.Embedding(
         len(dataset.metadata), model_params["vol_embedding_dim"]
     )
-    phi_vol_zero = torch.normal(0.0, config["loss"]["params"]["sigma"], size=(model_params["vol_embedding_dim"],))
-    embeddings_vol.weight.data.copy_(phi_vol_zero.unsqueeze(0).repeat(len(dataset.metadata), 1))
-    
+
     
     ## Coil embeddings initialization
     ########################################################
@@ -83,13 +81,8 @@ def main():
 
     # Create the table of embeddings for the coils
     embeddings_coil = torch.nn.Embedding(total_n_coils.item(), model_params["coil_embedding_dim"])
-    
-    phi_coil_zero = torch.normal(0.0, config["loss"]["params"]["sigma"], size=(model_params["coil_embedding_dim"],))
-    embeddings_coil.weight.data.copy_(phi_coil_zero.unsqueeze(0).repeat(total_n_coils.item(), 1))
-
 
     model = MODEL_CLASSES[config["model"]["id"]](**model_params)
-    
     
     
 ## NOTE : Train or inference
@@ -133,14 +126,12 @@ def main():
             )
     
     elif config["runtype"] == "train":
+        phi_coil_zero = torch.normal(0.0, config["loss"]["params"]["sigma"], size=(model_params["coil_embedding_dim"],))
+        embeddings_coil.weight.data.copy_(phi_coil_zero.unsqueeze(0).repeat(total_n_coils.item(), 1))
         
-        # Initialize the volume and coil embeddings with gaussian initialization
-        torch.nn.init.normal_(
-            embeddings_vol.weight.data, 0.0, config["loss"]["params"]["sigma"]
-        )
-        torch.nn.init.normal_(
-        embeddings_coil.weight.data, 0.0, config["loss"]["params"]["sigma"]
-    )
+        phi_vol_zero = torch.normal(0.0, config["loss"]["params"]["sigma"], size=(model_params["vol_embedding_dim"],))
+        embeddings_vol.weight.data.copy_(phi_vol_zero.unsqueeze(0).repeat(len(dataset.metadata), 1))
+        
         if "model_checkpoint" in config.keys():
             model_state_dict = torch.load(config["model_checkpoint"])[
                 "model_state_dict"
