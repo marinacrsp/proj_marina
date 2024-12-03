@@ -73,18 +73,16 @@ def main(rank: int, world_size: int, config: dict):
     #####################################################################
     
     model_params = config["model"]["params"]
-    #####################################################################
-    # volume embedding
-    #####################################################################
+    
+    ########################################################
+    ## Volume embeddings initialization
+    ########################################################
     embeddings_vol = torch.nn.Embedding(
         len(dataset.metadata), model_params["vol_embedding_dim"]
     )
-    torch.nn.init.normal_(
-        embeddings_vol.weight.data, 0.0, config["loss"]["params"]["sigma"]
-    )
 
-    ###################################################################
-    # Coil embeddings
+    ########################################################
+    ## Coil embeddings initialization
     ########################################################
     coil_sizes = []
     for i in range(len(dataset.metadata)):
@@ -98,12 +96,10 @@ def main(rank: int, world_size: int, config: dict):
 
     # Create the table of embeddings for the coils
     embeddings_coil = torch.nn.Embedding(total_n_coils.item(), model_params["coil_embedding_dim"])
-    torch.nn.init.normal_(
-        embeddings_coil.weight.data, 0.0, config["loss"]["params"]["sigma"]
-    )
 
     model = MODEL_CLASSES[config["model"]["id"]](**model_params)
-
+    
+    
     if config["runtype"] == "test":
         assert (
             "model_checkpoint" in config.keys()
@@ -114,15 +110,23 @@ def main(rank: int, world_size: int, config: dict):
         model.load_state_dict(model_state_dict)
         print(f"GPU{rank}] Checkpoint loaded successfully.")
 
-        # Only embeddings are optimized.
+        print('Optimizing volume and coil embeddings...')
+        # Freeze the whole model
         for param in model.parameters():
             param.requires_grad = False
 
         optimizer = OPTIMIZER_CLASSES[config["optimizer"]["id"]](
-            chain(embeddings_vol.parameters(), embeddings_coil.parameters()), **config["optimizer"]["params"]
-        )
+                    chain(embeddings_vol.parameters(), embeddings_coil.parameters()), **config["optimizer"]["params"]
+                )
 
+            
     elif config["runtype"] == "train":
+        phi_coil_zero = torch.normal(0.0, config["loss"]["params"]["sigma"], size=(model_params["coil_embedding_dim"],))
+        embeddings_coil.weight.data.copy_(phi_coil_zero.unsqueeze(0).repeat(total_n_coils.item(), 1))
+        
+        phi_vol_zero = torch.normal(0.0, config["loss"]["params"]["sigma"], size=(model_params["vol_embedding_dim"],))
+        embeddings_vol.weight.data.copy_(phi_vol_zero.unsqueeze(0).repeat(len(dataset.metadata), 1))
+        
         if "model_checkpoint" in config.keys():
             model_state_dict = torch.load(config["model_checkpoint"])[
                 "model_state_dict"
@@ -158,7 +162,9 @@ def main(rank: int, world_size: int, config: dict):
     trainer = Trainer(
         dataloader=dataloader,
         embeddings_vol=embeddings_vol,
+        phi_vol = phi_vol_zero,
         embeddings_coil=embeddings_coil,
+        phi_coil = phi_coil_zero,
         embeddings_coil_idx = start_idx,
         model=model,
         loss_fn=loss_fn,

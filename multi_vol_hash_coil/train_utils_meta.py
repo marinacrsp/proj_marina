@@ -31,13 +31,14 @@ class Trainer:
 
         self.dataloader = dataloader
         self.n_levels_hash = config["model"]["params"]["levels"]
-        self.embeddings_vol = embeddings_vol.to(self.device)
-        self.phi_vol = phi_vol.to(self.device)
-        self.embeddings_coil = embeddings_coil.to(self.device)
-        self.phi_coil = phi_coil.to(self.device)
+        
+        self.phi_vol, self.phi_coil = phi_vol.to(self.device), phi_coil.to(self.device)
+        self.embeddings_coil,  self.embeddings_vol = embeddings_coil.to(self.device), embeddings_vol.to(self.device)
+        
         self.start_idx = embeddings_start_idx.to(self.device)
         self.model = model.to(self.device)
         self.config = config
+        
         # If stateful loss function, move its "parameters" to `device`.
         if hasattr(loss_fn, "to"):
             self.loss_fn = loss_fn.to(self.device)
@@ -328,20 +329,20 @@ class Trainer:
                 )
                 plt.close(fig)
                 
-            # plot mask
-            fig = plt.figure(figsize=(10,10))
-            plt.subplot(1,2,1)
-            plt.imshow(predicted_mask[0,0])
-            plt.title('Zero positions')
-            plt.subplot(1,2,2)
-            plt.imshow(acquired_mask[0,0])
-            plt.title('Acquired positions')
-            self.writer.add_figure(
-                f"mask",
-                fig,
-                global_step=epoch_idx,
-            )
-            plt.close(fig)
+            # # plot mask
+            # fig = plt.figure(figsize=(10,10))
+            # plt.subplot(1,2,1)
+            # plt.imshow(predicted_mask[0,0])
+            # plt.title('Zero positions')
+            # plt.subplot(1,2,2)
+            # plt.imshow(acquired_mask[0,0])
+            # plt.title('Acquired positions')
+            # self.writer.add_figure(
+            #     f"mask",
+            #     fig,
+            #     global_step=epoch_idx,
+            # )
+            # plt.close(fig)
             
             self._log_hash_embeddings(epoch_idx, f"embeddings/hash")
             self._log_coil_embeddings(epoch_idx, f"embeddings/coil")
@@ -555,6 +556,9 @@ class Trainer:
         hparam_metrics["hparam/eval_metric/ssim"] = np.mean(self.last_ssim)
         self.writer.add_hparams(self.hparam_info, hparam_metrics)
 
+###########################################################################
+###########################################################################
+###########################################################################
 
 ##################################################
 # Loss Functions

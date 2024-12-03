@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import Optional
+from itertools import chain
 
 import fastmri
 import h5py
@@ -8,25 +9,30 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from data_utils import *
+from torch.optim import SGD, Adam, AdamW
 from fastmri.data.transforms import tensor_to_complex_np, to_tensor
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 
-
+OPTIMIZER_CLASSES = {
+    "Adam": Adam,
+    "AdamW": AdamW,
+    "SGD": SGD,
+}
 
 class Trainer:
     def __init__(
-        self, mode, dataloader, embeddings_vol, embeddings_coil, embeddings_start_idx, model, loss_fn, optimizer, scheduler, config
+        self, mode, dataloader, embeddings_vol, phi_vol, embeddings_coil, phi_coil, embeddings_start_idx, model, loss_fn, optimizer, scheduler, config
     ) -> None:
         self.mode = mode
         self.device = torch.device(config["device"])
         self.n_epochs = config["n_epochs"]
 
         self.dataloader = dataloader
-
-        self.embeddings_vol = embeddings_vol.to(self.device)
-        self.embeddings_coil = embeddings_coil.to(self.device)
+        self.phi_vol, self.phi_coil = phi_vol.to(self.device), phi_coil.to(self.device)
+        self.embeddings_vol, self.embeddings_coil = embeddings_vol.to(self.device), embeddings_coil.to(self.device)
+        
         self.start_idx = embeddings_start_idx.to(self.device)
         self.model = model.to(self.device)
 
@@ -40,9 +46,12 @@ class Trainer:
 
         self.log_interval = config["log_interval"]
         self.inference_mode = config["dataset"]["with_mask"]
+        self.meta_reinitialization = config["meta_learning"]["reinit_step"]
+        self.epsilon_meta = config["meta_learning"]["epsilon"]
         self.checkpoint_interval = config["checkpoint_interval"]
         self.path_to_out = Path(config["path_to_outputs"])
         self.timestamp = config["timestamp"]
+        self.config = config
         self.writer = SummaryWriter(self.path_to_out / self.timestamp)
 
         # Ground truth (used to compute the evaluation metrics).
@@ -89,7 +98,11 @@ class Trainer:
             self.writer.add_scalar("Loss/train", empirical_risk, epoch_idx)
             # TODO: UNCOMMENT WHEN USING LR SCHEDULER.
             # self.writer.add_scalar("Learning Rate", self.scheduler.get_last_lr()[0], epoch_idx)
-
+            
+            if self.config["runtype"] == "train":
+                if (epoch_idx + 1) % self.meta_reinitialization == 0:
+                    self._reptile_initialization()
+                    
             if (epoch_idx + 1) % self.log_interval == 0:
                 self._log_performance(epoch_idx)
                 self._log_weight_info(epoch_idx)
@@ -100,7 +113,23 @@ class Trainer:
 
         self._log_information(empirical_risk)
         self.writer.close()
-
+        
+    def _reptile_initialization(self):
+        phi_vol_bar = self.embeddings_vol.weight.mean(dim=0)
+        phi_coil_bar = self.embeddings_coil.weight.mean(dim=0)
+        
+        self.phi_vol += self.epsilon_meta*(phi_vol_bar - self.phi_vol)
+        self.phi_coil += self.epsilon_meta*(phi_coil_bar - self.phi_coil)
+        
+        self.embeddings_vol.weight.data.copy_(self.phi_vol)
+        self.embeddings_coil.weight.data.copy_(self.phi_coil)
+        
+        # Update the optimizer to use the new embeddings
+        self.optimizer = OPTIMIZER_CLASSES[self.config["optimizer"]["id"]](
+            chain(self.embeddings_vol.parameters(), self.embeddings_coil.parameters(), self.model.parameters()),
+            **self.config["optimizer"]["params"],
+        ) 
+        
     def _train_one_epoch(self):
         # Also known as "empirical risk".
         avg_loss = 0.0
@@ -223,15 +252,15 @@ class Trainer:
             mask = self.dataloader.dataset.metadata[vol_id]["mask"].squeeze(-1)
             predicted_mask = 1-mask.expand(shape).numpy()
             acquired_mask= mask.expand(shape).numpy()
-            # volume_kspace = fft2_shift(volume_img)  # To get "single-coil" k-space.
+            
             ### Mode of inference
-            if self.inference_mode: # NOTE: with_mask True 
+            if self.config["runtype"] == "test":
                 volume_kspace = volume_kspace*(predicted_mask) + self.kspace_gt[vol_id]*(acquired_mask)
                 raw_kspace = self.kspace_gt[vol_id]*(acquired_mask)  
                 raw_kspace[..., left_idx:right_idx] = center_vals
                 log_title = 'Acquired + predicted'
                 
-            else: # NOTE: with_mask False, evaluate prediction on the whole kspace
+            else: 
                 raw_kspace = self.kspace_gt[vol_id] 
                 log_title = 'Predicted'
             
@@ -304,20 +333,20 @@ class Trainer:
                 plt.close(fig)
                 
                 
-            # plot mask
-            fig = plt.figure(figsize=(10,10))
-            plt.subplot(1,2,1)
-            plt.imshow(predicted_mask[0,0])
-            plt.title('Zero positions')
-            plt.subplot(1,2,2)
-            plt.imshow(acquired_mask[0,0])
-            plt.title('Acquired positions')
-            self.writer.add_figure(
-                f"mask",
-                fig,
-                global_step=epoch_idx,
-            )
-            plt.close(fig)
+            # # plot mask
+            # fig = plt.figure(figsize=(10,10))
+            # plt.subplot(1,2,1)
+            # plt.imshow(predicted_mask[0,0])
+            # plt.title('Zero positions')
+            # plt.subplot(1,2,2)
+            # plt.imshow(acquired_mask[0,0])
+            # plt.title('Acquired positions')
+            # self.writer.add_figure(
+            #     f"mask",
+            #     fig,
+            #     global_step=epoch_idx,
+            # )
+            # plt.close(fig)
 
             # Log evaluation metrics.
             nmse_val = nmse(self.ground_truth[vol_id], volume_img)
@@ -343,7 +372,6 @@ class Trainer:
             self.last_nmse[vol_id] = nmse_val
             self.last_psnr[vol_id] = psnr_val
             self.last_ssim[vol_id] = ssim_val
-            
 
     def _plot_info(
         self, data_1, data_2, data_3, cste_1, cste_2, title_1, title_2, epoch_idx, tag
@@ -410,6 +438,7 @@ class Trainer:
 
         self.writer.add_figure(tag, fig, global_step=epoch_idx)
         plt.close(fig)
+        
     @torch.no_grad()
     def _log_coil_embeddings(
         self, epoch_idx, tag
@@ -477,6 +506,8 @@ class Trainer:
             "model_state_dict": self.model.state_dict(),
             "embedding_vol_state_dict": self.embeddings_vol.state_dict(),
             "embedding_coil_state_dict": self.embeddings_coil.state_dict(),
+            "phi_vol": self.phi_vol,
+            "phi_coil": self.phi_coil,
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scheduler_state_dict": self.scheduler.state_dict(),
         }
