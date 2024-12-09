@@ -94,11 +94,29 @@ def main():
         model_state_dict = torch.load(config["model_checkpoint"])["model_state_dict"]
         model.load_state_dict(model_state_dict)
         
-        pre_coil_embeddings = torch.load(config["model_checkpoint"])["embedding_coil_state_dict"]["weight"]
-        pre_vol_embeddings = torch.load(config["model_checkpoint"])["embedding_vol_state_dict"]["weight"]
+        phi_coil_zero = torch.load(config["model_checkpoint"])["embedding_coil_state_dict"]["weight"]
+        phi_vol_zero = torch.load(config["model_checkpoint"])["embedding_vol_state_dict"]["weight"]
+        optimizer = torch.load(config["model_checkpoint"])["optimizer_state_dict"]
         
-        embeddings_vol.weight.data.copy_(torch.mean(pre_vol_embeddings))
-        embeddings_coil.weight.data.copy_(torch.mean(pre_coil_embeddings))
+        # phi_coil_zero = torch.normal(0.0, config["loss"]["params"]["sigma"], size=(model_params["coil_embedding_dim"],))
+        # phi_vol_zero = torch.normal(0.0, config["loss"]["params"]["sigma"], size=(model_params["vol_embedding_dim"],))
+
+        # embeddings_coil.weight.data.copy_(phi_coil_zero.unsqueeze(0).repeat(total_n_coils.item(), 1))
+        # embeddings_vol.weight.data.copy_(phi_vol_zero.unsqueeze(0).repeat(len(dataset.metadata), 1))
+        
+        print("Loading the dictionary of embeddings from pretrained checkpoint")
+        embeddings_vol.weight.data.copy_(phi_vol_zero[:len(dataset.metadata)])
+        embeddings_coil.weight.data.copy_(phi_coil_zero[:total_n_coils.item()])
+        
+        print("Loading optimizer checkpoint")
+        # vol_optim = [optimizer["state"][0]["exp_avg"][:len(dataset.metadata)], optimizer["state"][0]["exp_avg_sq"][:len(dataset.metadata)]]
+        # coil_optim = [optimizer["state"][1]["exp_avg"][:total_n_coils.item()], optimizer["state"][1]["exp_avg_sq"][:total_n_coils.item()]]
+        
+        vol_optim = [optimizer["state"][0]["exp_avg"].mean(0).unsqueeze(0).expand(len(dataset.metadata), model_params["vol_embedding_dim"]), 
+                    optimizer["state"][0]["exp_avg_sq"].mean(0).unsqueeze(0).expand(len(dataset.metadata), model_params["vol_embedding_dim"])]
+        
+        coil_optim = [optimizer["state"][1]["exp_avg"].mean(0).unsqueeze(0).expand(total_n_coils.item(), model_params["coil_embedding_dim"]), 
+                    optimizer["state"][1]["exp_avg_sq"].mean(0).unsqueeze(0).expand(total_n_coils.item(), model_params["coil_embedding_dim"])]
     
         print("Checkpoint loaded successfully.")
 
@@ -152,8 +170,10 @@ def main():
         dataloader=dataloader,
         embeddings_vol=embeddings_vol,
         phi_vol = phi_vol_zero,
+        vol_optimizer = vol_optim,
         embeddings_coil = embeddings_coil,
         phi_coil = phi_coil_zero,
+        coil_optimizer = coil_optim,
         embeddings_start_idx=start_idx,
         model=model,
         loss_fn=loss_fn,

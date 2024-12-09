@@ -60,11 +60,13 @@ def main(rank: int, world_size: int, config: dict):
 
     # N.B. Since we are using a sampler, we need to set shuffle to False.
     
+    num_workers = int(os.environ['SLURM_CPUS_PER_TASK'])//world_size - 1
+    print(num_workers)
     #################### DATALOADING TO MULTIGPU ######################
     dataloader = DataLoader(
         dataset,
         batch_size=loader_config["effective_batch_size"]//world_size,
-        num_workers=0, # This is needed to make processing faster 
+        num_workers=num_workers, # This is needed to make processing faster 
         shuffle=False,
         sampler=DistributedSampler(dataset),
         pin_memory=True,

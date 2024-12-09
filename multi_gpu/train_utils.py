@@ -167,7 +167,7 @@ class Trainer:
 
         dataset = TensorDataset(kspace_ids)
         dataloader = DataLoader(
-            dataset, batch_size=60_000, shuffle=False, num_workers=3
+            dataset, batch_size=60_000, shuffle=False, num_workers=0
         )
         vol_embeddings = self.embeddings(
             torch.tensor([vol_id] * 60_000, dtype=torch.long, device=self.device)

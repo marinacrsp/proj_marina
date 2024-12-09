@@ -24,7 +24,7 @@ OPTIMIZER_CLASSES = {
 
 class Trainer:
     def __init__(
-        self, dataloader, embeddings_vol, phi_vol, embeddings_coil, phi_coil, embeddings_start_idx, model, loss_fn, optimizer, scheduler, config
+        self, dataloader, embeddings_vol, phi_vol, vol_momentums, embeddings_coil, phi_coil, coil_momentums, embeddings_start_idx, model, loss_fn, optimizer, scheduler, config
     ) -> None:
         self.device = torch.device(config["device"])
         self.n_epochs = config["n_epochs"]
@@ -53,6 +53,8 @@ class Trainer:
         self.path_to_out = Path(config["path_to_outputs"])
         self.timestamp = config["timestamp"]
         self.writer = SummaryWriter(self.path_to_out / self.timestamp)
+        self.optimizer_vol_init = vol_momentums
+        self.optimizer_coil_init = coil_momentums
 
         # Ground truth (used to compute the evaluation metrics).
         self.ground_truth = []
@@ -91,7 +93,7 @@ class Trainer:
         """Train the model across multiple epochs and log the performance."""
         empirical_risk = 0
         for epoch_idx in range(self.n_epochs):
-            empirical_risk = self._train_one_epoch()
+            empirical_risk = self._train_one_epoch(epoch_idx)
 
             print(f"EPOCH {epoch_idx}    avg loss: {empirical_risk}\n")
             self.writer.add_scalar("Loss/train", empirical_risk, epoch_idx)
@@ -129,7 +131,7 @@ class Trainer:
             **self.config["optimizer"]["params"],
         ) 
         
-    def _train_one_epoch(self):
+    def _train_one_epoch(self, epoch_idx):
         # Also known as "empirical risk".
         avg_loss = 0.0
         n_obs = 0
@@ -155,6 +157,22 @@ class Trainer:
 
             batch_loss.backward()
             self.optimizer.step()
+            
+            # if epoch_idx == 0:
+            #     print('Updating optimizers for volume and coils')
+            #     print('Coil momentums before update: ')
+            #     print(f"m1 : {self.optimizer.state_dict()["state"][1]["exp_avg"]}")
+            #     print(f"m2 {self.optimizer.state_dict()["state"][1]["exp_avg_sq"]}")
+                
+            #     self.optimizer.state_dict()["state"][0]["exp_avg"] += self.optimizer_vol_init[0]
+            #     self.optimizer.state_dict()["state"][1]["exp_avg"] += self.optimizer_coil_init[0]
+            #     self.optimizer.state_dict()["state"][0]["exp_avg_sq"] += self.optimizer_vol_init[1]
+            #     self.optimizer.state_dict()["state"][1]["exp_avg_sq"] += self.optimizer_coil_init[1]              
+                
+            #     print('Coil momentums after update: ')
+            #     print(f"m1 : {self.optimizer.state_dict()["state"][1]["exp_avg"]}")
+            #     print(f"m2 {self.optimizer.state_dict()["state"][1]["exp_avg_sq"]}")
+            # print(self.optimizer.state_dict())
 
             avg_loss += batch_loss.item() * len(inputs)
             n_obs += len(inputs)
@@ -175,6 +193,7 @@ class Trainer:
 
         # Create tensors of indices for each dimension
         kx_ids = torch.cat([torch.arange(left_idx), torch.arange(right_idx, width)])
+        # kx_ids = torch.arange(width)
         ky_ids = torch.arange(height)
         kz_ids = torch.arange(n_slices)
         coil_ids = torch.arange(n_coils)
@@ -219,11 +238,12 @@ class Trainer:
         volume_kspace = (
             volume_kspace * self.dataloader.dataset.metadata[vol_id]["norm_cste"]
         )
+        
 
         volume_kspace = tensor_to_complex_np(volume_kspace.detach().cpu())
 
         # "Fill-in" center values.
-        volume_kspace[..., left_idx:right_idx] = center_vals
+        # volume_kspace[..., left_idx:right_idx] = center_vals
         coils_img = []
         for i in range(4):
             coils_img.append(np.abs(inverse_fft2_shift(volume_kspace)[:,i]))
@@ -249,22 +269,30 @@ class Trainer:
             predicted_mask = 1-mask.expand(shape).numpy()
             acquired_mask= mask.expand(shape).numpy()
             
-            if self.config["runtype"] == "test":
-                volume_kspace = volume_kspace*(predicted_mask) + self.kspace_gt[vol_id]*(acquired_mask)
-                raw_kspace = self.kspace_gt[vol_id]*(acquired_mask)  
-                raw_kspace[..., left_idx:right_idx] = center_vals
-                log_title = 'Acquired + Predicted'
+            raw_kspace = self.kspace_gt[vol_id]
+            raw_kspace[..., left_idx:right_idx] = 0
             
-            else:
-                raw_kspace = self.kspace_gt[vol_id]
-                log_title = 'Predicted'
+            log_title = 'Predicted'
+            
+            # if self.config["runtype"] == "test":
+            #     volume_kspace = volume_kspace*(predicted_mask) + self.kspace_gt[vol_id]*(acquired_mask)
+            #     raw_kspace = self.kspace_gt[vol_id]*(acquired_mask)  
+            #     raw_kspace[..., left_idx:right_idx] = center_vals
+            #     log_title = 'Acquired + Predicted'
+            
+            # else:
+            #     raw_kspace = self.kspace_gt[vol_id]
+            #     log_title = 'Predicted'
             
             
             volume_img = rss(inverse_fft2_shift(volume_kspace))
             raw_volume_img = rss(inverse_fft2_shift(raw_kspace))
             
-            volume_kspace = fft2_shift(volume_img)
-            raw_kspace = fft2_shift(raw_volume_img)
+            volume_kspace = rss(volume_kspace)
+            raw_kspace = rss(raw_kspace)
+            
+            # volume_kspace = fft2_shift(volume_img)
+            # raw_kspace = fft2_shift(raw_volume_img)
             
             ##################################################
             # Log kspace values.
@@ -348,24 +376,27 @@ class Trainer:
             self._log_coil_embeddings(epoch_idx, f"embeddings/coil")
 
             # Log evaluation metrics.
-            nmse_val = nmse(self.ground_truth[vol_id], volume_img)
+            # nmse_val = nmse(self.ground_truth[vol_id], volume_img)
+            nmse_val = nmse(raw_volume_img, volume_img)
             self.writer.add_scalar(f"eval/vol_{vol_id}/nmse", nmse_val, epoch_idx)
 
-            psnr_val = psnr(self.ground_truth[vol_id], volume_img)
+            # psnr_val = psnr(self.ground_truth[vol_id], volume_img)
+            psnr_val = psnr(raw_volume_img, volume_img)
             self.writer.add_scalar(f"eval/vol_{vol_id}/psnr", psnr_val, epoch_idx)
 
-            ssim_val = ssim(self.ground_truth[vol_id], volume_img)
+            # ssim_val = ssim(self.ground_truth[vol_id], volume_img)
+            ssim_val = ssim(raw_volume_img, volume_img)
             self.writer.add_scalar(f"eval/vol_{vol_id}/ssim", ssim_val, epoch_idx)
             
-            # Comparison metrics for the raw image and the groundtruth
-            raw_nmse_val = nmse(self.ground_truth[vol_id], raw_volume_img)
-            self.writer.add_scalar(f"eval/vol_{vol_id}/nmse_raw", raw_nmse_val, epoch_idx)
+            # # Comparison metrics for the raw image and the groundtruth
+            # raw_nmse_val = nmse(self.ground_truth[vol_id], raw_volume_img)
+            # self.writer.add_scalar(f"eval/vol_{vol_id}/nmse_raw", raw_nmse_val, epoch_idx)
 
-            raw_psnr_val = psnr(self.ground_truth[vol_id], raw_volume_img)
-            self.writer.add_scalar(f"eval/vol_{vol_id}/psnr_raw", raw_psnr_val, epoch_idx)
+            # raw_psnr_val = psnr(self.ground_truth[vol_id], raw_volume_img)
+            # self.writer.add_scalar(f"eval/vol_{vol_id}/psnr_raw", raw_psnr_val, epoch_idx)
 
-            raw_ssim_val = ssim(self.ground_truth[vol_id], raw_volume_img)
-            self.writer.add_scalar(f"eval/vol_{vol_id}/ssim_raw", raw_ssim_val, epoch_idx)
+            # raw_ssim_val = ssim(self.ground_truth[vol_id], raw_volume_img)
+            # self.writer.add_scalar(f"eval/vol_{vol_id}/ssim_raw", raw_ssim_val, epoch_idx)
 
             # Update.
             self.last_nmse[vol_id] = nmse_val
@@ -424,59 +455,61 @@ class Trainer:
     ):
         fig = plt.figure(figsize=(30, 10))
         epsilon = 1.e-45
-        plt.subplot(1, 3, 1)
-        plt.imshow(np.log((data_1 / cste_1) + epsilon))
+        plt.subplot(1, 2, 1)
+        # plt.imshow(np.log((data_1 / cste_1) + epsilon))
+        plt.imshow(data_1 / cste_1)
         plt.colorbar()
         plt.title(f"{title_1} kspace")
         plt.axis('off')
 
-        plt.subplot(1, 3, 2)
-        plt.hist(data_1.flatten(), log=True, bins=100)
+        # plt.subplot(1, 3, 2)
+        # plt.hist(data_1.flatten(), log=True, bins=100)
 
-        max_val = np.max(data_1)
-        min_val = np.min(data_1)
-        # ignoring zero data
-        non_zero = data_1 > 0
-        mean = np.mean(data_1[non_zero])
-        median = np.median(data_1[non_zero])
-        q05 = np.quantile(data_1[non_zero], 0.05)
-        q95 = np.quantile(data_1[non_zero], 0.95)
+        # max_val = np.max(data_1)
+        # min_val = np.min(data_1)
+        # # ignoring zero data
+        # non_zero = data_1 > 0
+        # mean = np.mean(data_1[non_zero])
+        # median = np.median(data_1[non_zero])
+        # q05 = np.quantile(data_1[non_zero], 0.05)
+        # q95 = np.quantile(data_1[non_zero], 0.95)
 
-        plt.axvline(
-            mean, color="r", linestyle="dashed", linewidth=2, label=f"Mean: {mean:.2e}"
-        )
-        plt.axvline(
-            median,
-            color="g",
-            linestyle="dashed",
-            linewidth=2,
-            label=f"Median: {median:.2e}",
-        )
-        plt.axvline(
-            q05, color="b", linestyle="dotted", linewidth=2, label=f"Q05: {q05:.2e}"
-        )
-        plt.axvline(
-            q95, color="b", linestyle="dotted", linewidth=2, label=f"Q95: {q95:.2e}"
-        )
-        plt.axvline(
-            min_val,
-            color="orange",
-            linestyle="solid",
-            linewidth=2,
-            label=f"Min: {min_val:.2e}",
-        )
-        plt.axvline(
-            max_val,
-            color="purple",
-            linestyle="solid",
-            linewidth=2,
-            label=f"Max: {max_val:.2e}",
-        )
-        plt.legend()
-        plt.title(f"{title_1} histogram")
+        # plt.axvline(
+        #     mean, color="r", linestyle="dashed", linewidth=2, label=f"Mean: {mean:.2e}"
+        # )
+        # plt.axvline(
+        #     median,
+        #     color="g",
+        #     linestyle="dashed",
+        #     linewidth=2,
+        #     label=f"Median: {median:.2e}",
+        # )
+        # plt.axvline(
+        #     q05, color="b", linestyle="dotted", linewidth=2, label=f"Q05: {q05:.2e}"
+        # )
+        # plt.axvline(
+        #     q95, color="b", linestyle="dotted", linewidth=2, label=f"Q95: {q95:.2e}"
+        # )
+        # plt.axvline(
+        #     min_val,
+        #     color="orange",
+        #     linestyle="solid",
+        #     linewidth=2,
+        #     label=f"Min: {min_val:.2e}",
+        # )
+        # plt.axvline(
+        #     max_val,
+        #     color="purple",
+        #     linestyle="solid",
+        #     linewidth=2,
+        #     label=f"Max: {max_val:.2e}",
+        # )
+        # plt.legend()
+        # plt.title(f"{title_1} histogram")
 
-        plt.subplot(1, 3, 3)
-        plt.imshow(np.log((data_3 /cste_1) + epsilon))
+        plt.subplot(1, 2, 2)
+        # plt.imshow(np.log((data_3 /cste_1) + epsilon))
+        plt.imshow(data_3/cste_2)
         plt.colorbar()
         plt.axis('off')
 

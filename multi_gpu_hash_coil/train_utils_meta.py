@@ -53,6 +53,7 @@ class Trainer:
         # Wrap the embeddings also in the data distributed parallelism
         self.embeddings_vol, self.embeddings_coil = embeddings_vol.to(self.device), embeddings_coil.to(self.device)
         self.embeddings_vol, self.embeddings_coil = DDP(embeddings_vol, device_ids=[self.device]), DDP(embeddings_coil, device_ids=[self.device])
+        
         self.n_levels_hash = config["model"]["params"]["levels"]
         self.phi_vol, self.phi_coil = phi_vol.to(self.device), phi_coil.to(self.device)
         
@@ -122,8 +123,9 @@ class Trainer:
             self.dataloader.sampler.set_epoch(epoch_idx)
             empirical_risk = self._run_epoch()
             
-            if (epoch_idx + 1) % self.meta_reinitialization == 0:
-                self._reptile_initialization()
+            # print("No meta initialization")
+            # if (epoch_idx + 1) % self.meta_reinitialization == 0:
+            #     self._reptile_initialization()
                 
             if self.device == 0:
                 print(f"EPOCH {epoch_idx}    avg loss: {empirical_risk}\n")
@@ -199,7 +201,7 @@ class Trainer:
             chain(self.embeddings_vol.parameters(), self.embeddings_coil.parameters(), self.model.parameters()),
             **self.config["optimizer"]["params"],
         ) 
-        self._syncronize_update()
+        # self._syncronize_update()
 
     ###########################################################################
     ###########################################################################
@@ -262,7 +264,7 @@ class Trainer:
         volume_kspace = tensor_to_complex_np(volume_kspace.detach().cpu())
 
         # "Fill-in" center values.
-        volume_kspace[..., left_idx:right_idx] = center_vals
+        # volume_kspace[..., left_idx:right_idx] = center_vals
         
         coils_img = []
         for i in range(4):
@@ -292,22 +294,33 @@ class Trainer:
             predicted_mask = 1-mask.expand(shape).numpy()
             acquired_mask= mask.expand(shape).numpy()
             
-            if self.config["runtype"] == "test":
-                volume_kspace = volume_kspace*(predicted_mask) + self.kspace_gt[vol_id]*(acquired_mask)
-                raw_kspace = self.kspace_gt[vol_id]*(acquired_mask)  
-                raw_kspace[..., left_idx:right_idx] = center_vals
-                log_title = 'Acquired + Predicted'
+            raw_kspace = self.kspace_gt[vol_id]
+            log_title = 'Predicted'
+            raw_kspace[..., left_idx:right_idx] = 0
+            # volume_kspace = volume_kspace*(predicted_mask) + self.kspace_gt[vol_id]*(acquired_mask)
+            # raw_kspace = self.kspace_gt[vol_id]*(acquired_mask)  
+            # raw_kspace[..., left_idx:right_idx] = center_vals
+            # log_title = 'Acquired + Predicted'
             
-            else:
-                raw_kspace = self.kspace_gt[vol_id]
-                log_title = 'Predicted'
+            # if self.config["runtype"] == "test":
+            #     volume_kspace = volume_kspace*(predicted_mask) + self.kspace_gt[vol_id]*(acquired_mask)
+            #     raw_kspace = self.kspace_gt[vol_id]*(acquired_mask)  
+            #     raw_kspace[..., left_idx:right_idx] = center_vals
+            #     log_title = 'Acquired + Predicted'
+            
+            # else:
+            #     raw_kspace = self.kspace_gt[vol_id]
+            #     log_title = 'Predicted'
             
             
             volume_img = rss(inverse_fft2_shift(volume_kspace))
             raw_volume_img = rss(inverse_fft2_shift(raw_kspace))
             
-            volume_kspace = fft2_shift(volume_img)
-            raw_kspace = fft2_shift(raw_volume_img)
+            
+            volume_kspace = rss(volume_kspace)
+            raw_kspace = rss(raw_kspace)
+            # volume_kspace = fft2_shift(volume_img)
+            # raw_kspace = fft2_shift(raw_volume_img)
             
             ##################################################
             # Log kspace values.
@@ -377,24 +390,24 @@ class Trainer:
             self._log_coil_embeddings(epoch_idx, f"embeddings/coil")
 
             # Log evaluation metrics.
-            nmse_val = nmse(self.ground_truth[vol_id], volume_img)
+            nmse_val = nmse(raw_volume_img, volume_img)
             self.writer.add_scalar(f"eval/vol_{vol_id}/nmse", nmse_val, epoch_idx)
 
-            psnr_val = psnr(self.ground_truth[vol_id], volume_img)
+            psnr_val = psnr(raw_volume_img, volume_img)
             self.writer.add_scalar(f"eval/vol_{vol_id}/psnr", psnr_val, epoch_idx)
 
-            ssim_val = ssim(self.ground_truth[vol_id], volume_img)
+            ssim_val = ssim(raw_volume_img, volume_img)
             self.writer.add_scalar(f"eval/vol_{vol_id}/ssim", ssim_val, epoch_idx)
             
-            # Comparison metrics for the raw image and the groundtruth
-            raw_nmse_val = nmse(self.ground_truth[vol_id], raw_volume_img)
-            self.writer.add_scalar(f"eval/vol_{vol_id}/nmse_raw", raw_nmse_val, epoch_idx)
+            # # Comparison metrics for the raw image and the groundtruth
+            # raw_nmse_val = nmse(self.ground_truth[vol_id], raw_volume_img)
+            # self.writer.add_scalar(f"eval/vol_{vol_id}/nmse_raw", raw_nmse_val, epoch_idx)
 
-            raw_psnr_val = psnr(self.ground_truth[vol_id], raw_volume_img)
-            self.writer.add_scalar(f"eval/vol_{vol_id}/psnr_raw", raw_psnr_val, epoch_idx)
+            # raw_psnr_val = psnr(self.ground_truth[vol_id], raw_volume_img)
+            # self.writer.add_scalar(f"eval/vol_{vol_id}/psnr_raw", raw_psnr_val, epoch_idx)
 
-            raw_ssim_val = ssim(self.ground_truth[vol_id], raw_volume_img)
-            self.writer.add_scalar(f"eval/vol_{vol_id}/ssim_raw", raw_ssim_val, epoch_idx)
+            # raw_ssim_val = ssim(self.ground_truth[vol_id], raw_volume_img)
+            # self.writer.add_scalar(f"eval/vol_{vol_id}/ssim_raw", raw_ssim_val, epoch_idx)
 
             # Update.
             self.last_nmse[vol_id] = nmse_val
@@ -453,59 +466,61 @@ class Trainer:
     ):
         fig = plt.figure(figsize=(30, 10))
         epsilon = 1.e-45
-        plt.subplot(1, 3, 1)
-        plt.imshow(np.log((data_1 / cste_1) + epsilon))
+        plt.subplot(1, 2, 1)
+        # plt.imshow(np.log((data_1 / cste_1) + epsilon))
+        plt.imshow(data_1 / cste_1)
         plt.colorbar()
         plt.title(f"{title_1} kspace")
         plt.axis('off')
 
-        plt.subplot(1, 3, 2)
-        plt.hist(data_1.flatten(), log=True, bins=100)
+        # plt.subplot(1, 3, 2)
+        # plt.hist(data_1.flatten(), log=True, bins=100)
 
-        max_val = np.max(data_1)
-        min_val = np.min(data_1)
-        # ignoring zero data
-        non_zero = data_1 > 0
-        mean = np.mean(data_1[non_zero])
-        median = np.median(data_1[non_zero])
-        q05 = np.quantile(data_1[non_zero], 0.05)
-        q95 = np.quantile(data_1[non_zero], 0.95)
+        # max_val = np.max(data_1)
+        # min_val = np.min(data_1)
+        # # ignoring zero data
+        # non_zero = data_1 > 0
+        # mean = np.mean(data_1[non_zero])
+        # median = np.median(data_1[non_zero])
+        # q05 = np.quantile(data_1[non_zero], 0.05)
+        # q95 = np.quantile(data_1[non_zero], 0.95)
 
-        plt.axvline(
-            mean, color="r", linestyle="dashed", linewidth=2, label=f"Mean: {mean:.2e}"
-        )
-        plt.axvline(
-            median,
-            color="g",
-            linestyle="dashed",
-            linewidth=2,
-            label=f"Median: {median:.2e}",
-        )
-        plt.axvline(
-            q05, color="b", linestyle="dotted", linewidth=2, label=f"Q05: {q05:.2e}"
-        )
-        plt.axvline(
-            q95, color="b", linestyle="dotted", linewidth=2, label=f"Q95: {q95:.2e}"
-        )
-        plt.axvline(
-            min_val,
-            color="orange",
-            linestyle="solid",
-            linewidth=2,
-            label=f"Min: {min_val:.2e}",
-        )
-        plt.axvline(
-            max_val,
-            color="purple",
-            linestyle="solid",
-            linewidth=2,
-            label=f"Max: {max_val:.2e}",
-        )
-        plt.legend()
-        plt.title(f"{title_1} histogram")
+        # plt.axvline(
+        #     mean, color="r", linestyle="dashed", linewidth=2, label=f"Mean: {mean:.2e}"
+        # )
+        # plt.axvline(
+        #     median,
+        #     color="g",
+        #     linestyle="dashed",
+        #     linewidth=2,
+        #     label=f"Median: {median:.2e}",
+        # )
+        # plt.axvline(
+        #     q05, color="b", linestyle="dotted", linewidth=2, label=f"Q05: {q05:.2e}"
+        # )
+        # plt.axvline(
+        #     q95, color="b", linestyle="dotted", linewidth=2, label=f"Q95: {q95:.2e}"
+        # )
+        # plt.axvline(
+        #     min_val,
+        #     color="orange",
+        #     linestyle="solid",
+        #     linewidth=2,
+        #     label=f"Min: {min_val:.2e}",
+        # )
+        # plt.axvline(
+        #     max_val,
+        #     color="purple",
+        #     linestyle="solid",
+        #     linewidth=2,
+        #     label=f"Max: {max_val:.2e}",
+        # )
+        # plt.legend()
+        # plt.title(f"{title_1} histogram")
 
-        plt.subplot(1, 3, 3)
-        plt.imshow(np.log((data_3 /cste_1) + epsilon))
+        plt.subplot(1, 2, 2)
+        # plt.imshow(np.log((data_3 /cste_1) + epsilon))
+        plt.imshow(data_3 /cste_1)
         plt.colorbar()
         plt.axis('off')
 
