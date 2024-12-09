@@ -51,7 +51,7 @@ log_interval: 50
 checkpoint_interval: 600  # Keep in mind that each checkpoint takes ~241 MB of space.
 
 meta_learning:
-  reinit_step: 200
+  reinit_step: 1
   epsilon: 0.01
 
 ###################################################

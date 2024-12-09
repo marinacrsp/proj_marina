@@ -3,7 +3,7 @@ seed: 7
 # runtype: train
 runtype: test
 
-path_to_outputs: /scratch_net/ken/mcrespo/proj_marina/logs/multivol_02_05_inf
+path_to_outputs: /scratch_net/ken/mcrespo/proj_marina/logs/multivol_12_09_inf
 
 model_checkpoint: /scratch_net/ken/mcrespo/proj_marina/logs/multivol_12_04/2024-12-07_12h26m33s/checkpoints/epoch_0599.pt
 

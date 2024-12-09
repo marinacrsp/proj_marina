@@ -2,7 +2,7 @@
 #SBATCH  --output=logs/%j.out       
 #SBATCH  --gres=gpu:1
 #SBATCH  --cpus-per-task=4
-#SBATCH  --constraint='titan_xp'
+### SBATCH  --constraint='titan_xp'
 #SBATCH  --mem=50G
 
 

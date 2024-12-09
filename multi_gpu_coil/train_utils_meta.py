@@ -150,12 +150,32 @@ class Trainer:
             self._log_information(empirical_risk)
             self.writer.close()
 
+    def set_requires_grad(model, freezing):
+        for param in model.parameters():
+            param.requires_grad = freezing
+
+
     def _run_epoch(self, epoch_idx):
         # Also known as "empirical risk".
         avg_loss = 0.0
         n_obs = 0
-
+        freeze_intervals = [(100, 150), (200, 250), (300, 350), (400, 450)] 
+        freeze = any(start <= (epoch_idx + 1) < end for start, end in freeze_intervals)
+        
         self.model.train()
+        
+        if freeze:
+            print(f"Epoch {epoch_idx}: Freezing model")
+            # set_requires_grad(self.model, True)
+                
+            self.optimizer = OPTIMIZER_CLASSES[self.config["optimizer"]["id"]](
+            chain(self.embeddings_vol.parameters(), self.embeddings_coil.parameters(), self.model.parameters()),
+            **self.config["optimizer"]["params"],) 
+
+        else:
+            print(f"Epoch {epoch_idx}: Unfreezing model")
+            # set_requires_grad(self.model, False)
+
         for batch_idx, (inputs, targets) in enumerate(self.dataloader):
             inputs, targets = inputs.to(self.device), targets.to(self.device)
             
